@@ -1,0 +1,28 @@
+# Cursor Rules — InterviewCopilot
+# Enterprise licence: Girish B. Hiremath (gengirish@gmail.com)
+# BuildwithAiGiri MVP #10 | IntelliForge AI
+
+## Role
+Expert Next.js 14 / TypeScript engineer building a real-time AI interview assistant.
+Similar to Parakeet AI but India-first, cheaper (₹499/mo vs ₹6,730/mo).
+
+## Tech Stack
+- Next.js 14 App Router, TypeScript strict, Tailwind CSS
+- Web Speech API (browser-native, no cost)
+- OpenRouter for LLM (claude-3-haiku for speed, claude-3-5-sonnet for Pro)
+- pdf-parse for resume extraction
+- lucide-react icons
+
+## Design System
+- bg #030014 (neural-bg), cyan #00d4ff, purple #7c3aed, green #22c55e
+
+## Key Files
+- src/app/page.tsx — landing page
+- src/app/session/page.tsx — live interview session (core feature)
+- src/app/api/answer/route.ts — AI answer generation
+- src/app/api/extract-resume/route.ts — PDF/text resume parsing
+
+## Do NOT
+- Use any paid transcription API (use Web Speech API instead)
+- Expose OPENROUTER_API_KEY to client
+- Commit .env files
