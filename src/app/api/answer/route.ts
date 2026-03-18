@@ -14,14 +14,15 @@ export async function POST(req: NextRequest) {
 
   if (!question) return NextResponse.json({ error: "No question provided" }, { status: 400 });
 
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const geminiKey = process.env.GOOGLE_AI_KEY;
+  const openrouterKey = process.env.OPENROUTER_API_KEY;
   const persona = ROLE_PERSONAS[role] || ROLE_PERSONAS["backend"];
 
   const resumeContext = resumeText
-    ? `\n\nMy resume/background:\n${resumeText.slice(0, 2000)}`
+    ? `\n\nCandidate resume/background:\n${resumeText.slice(0, 2000)}`
     : "";
 
-  const systemPrompt = `${persona}
+  const fullPrompt = `${persona}
 
 You are helping a candidate answer interview questions in real time.${resumeContext}
 
@@ -31,40 +32,68 @@ Rules:
 - For technical questions, give direct, specific answers with examples
 - Reference the candidate's resume/background when relevant
 - Be confident and professional — this is a live interview
-- Start the answer directly — no preamble like "Great question!"`;
+- Start the answer directly — no preamble like "Great question!"
 
-  // Fallback if no API key
-  if (!apiKey || apiKey === "sk-or-v1-xxx") {
-    const fallbacks: Record<string, string> = {
-      default: `Thank you for that question. Based on my experience as a ${role.replace("-", " ")}, I've worked extensively in this area.\n\nSituation: In my previous role, I faced a similar challenge where we needed to deliver results under tight constraints.\n\nTask: I was responsible for architecting and implementing the solution end-to-end.\n\nAction: I broke the problem down, prioritised the highest-impact components, and collaborated closely with the team to ship iteratively.\n\nResult: We delivered on time, improved performance by 40%, and the solution is still in production.\n\nI'd be happy to dive deeper into any specific aspect of this.`,
-    };
-    return NextResponse.json({ answer: fallbacks.default, fallback: true });
+Interview question: "${question}"`;
+
+  // 1. Try Gemini 2.0 Flash (primary — free tier)
+  if (geminiKey) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents: [{ parts: [{ text: fullPrompt }] }] }),
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const answer = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (answer) return NextResponse.json({ answer, source: "gemini" });
+      }
+    } catch {}
   }
 
-  try {
-    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://interview.intelliforge.digital",
-        "X-Title": "InterviewCopilot — IntelliForge AI",
-      },
-      body: JSON.stringify({
-        model: "anthropic/claude-3-haiku",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: `Interview question: "${question}"` },
-        ],
-        max_tokens: 400,
-        temperature: 0.7,
-      }),
-    });
-
-    const data = await res.json();
-    const answer = data.choices?.[0]?.message?.content || "Could not generate answer.";
-    return NextResponse.json({ answer });
-  } catch (err) {
-    return NextResponse.json({ answer: "Network error. Please try again.", error: true });
+  // 2. Fallback: OpenRouter (claude-3-haiku)
+  if (openrouterKey) {
+    try {
+      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${openrouterKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://interview.intelliforge.digital",
+          "X-Title": "InterviewCopilot — IntelliForge AI",
+        },
+        body: JSON.stringify({
+          model: "anthropic/claude-3-haiku",
+          messages: [{ role: "user", content: fullPrompt }],
+          max_tokens: 400,
+          temperature: 0.7,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const answer = data.choices?.[0]?.message?.content;
+        if (answer) return NextResponse.json({ answer, source: "openrouter" });
+      }
+    } catch {}
   }
+
+  // 3. Static fallback — at least make it question-aware
+  const roleLabel = (role || "engineer").replace(/-/g, " ");
+  const isStarQuestion = /tell me about|give me an example|describe a time|when did you/i.test(question);
+  const isTechnicalQuestion = /how does|what is|explain|difference between|why do/i.test(question);
+
+  let answer = "";
+  if (isStarQuestion) {
+    answer = `As a ${roleLabel}, I faced a similar situation in a recent project.\n\n**Situation:** Our team needed to deliver a critical feature under a tight deadline with limited resources.\n\n**Task:** I was responsible for leading the design and implementation end-to-end.\n\n**Action:** I broke the problem into smaller milestones, prioritised the highest-impact components, and coordinated closely with cross-functional stakeholders to unblock dependencies quickly.\n\n**Result:** We shipped on time, reduced technical debt by 30%, and the solution has been running in production with zero incidents for 6 months.\n\nI'd be happy to dive deeper into any specific aspect of this experience.`;
+  } else if (isTechnicalQuestion) {
+    answer = `Great technical question. As a ${roleLabel}, this is something I work with regularly.\n\nThe core concept here involves understanding the trade-offs between different approaches. In my experience, the most effective solution depends on your specific constraints — scale, latency requirements, and team familiarity with the technology.\n\nI'd approach this by first defining the requirements clearly, then evaluating 2-3 options against those criteria, and finally implementing with proper testing and monitoring in place.\n\nFor a concrete example from my work: we faced a similar decision and chose the approach that balanced developer productivity with production reliability — which paid off significantly in the long run.`;
+  } else {
+    answer = `As a ${roleLabel}, I approach this by focusing on first principles and clear communication with stakeholders.\n\nIn my experience, the key is to break complex problems into manageable pieces, align with the team on priorities, and iterate quickly based on feedback.\n\nI've consistently found that combining technical rigour with strong collaboration leads to the best outcomes — and that's the approach I'd bring to this role.`;
+  }
+
+  return NextResponse.json({ answer, source: "fallback" });
 }
