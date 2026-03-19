@@ -1,0 +1,21 @@
+---
+description: Conversion-first UI and interview UX standards
+globs: src/**/*.tsx
+alwaysApply: false
+---
+
+# Frontend Conversion and UX
+
+For landing, auth, session, and dashboard UI:
+
+- Keep critical actions obvious (`Start`, `Sign up`, `Upgrade`, `Ask`).
+- Show loading and failure states; never leave blank or silent failures.
+- Prefer resilient flows (manual fallback when mic/API features fail).
+- Keep copy concise and outcome-focused (what user gets now).
+- Preserve dark theme and existing neural design tokens.
+
+Session UX rules:
+
+- Always keep user context visible (role, plan/quota, session state).
+- Make transcript/history export accessible.
+- Show quota/auth errors inline with a direct recovery path.

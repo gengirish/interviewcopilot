@@ -1,0 +1,22 @@
+---
+description: Reliability and safety standards for Next.js API routes
+globs: src/app/api/**/route.ts
+alwaysApply: false
+---
+
+# Next.js API Reliability
+
+When modifying API routes:
+
+- Validate inputs early and return explicit 4xx errors.
+- Never expose secrets to the client or response payloads.
+- Use typed request/response shapes from shared `src/lib` types where practical.
+- Enforce auth/plan checks server-side for protected endpoints.
+- Add safe fallbacks and deterministic error messages.
+- Keep side effects idempotent when possible.
+
+Operational checks:
+
+- Add or maintain a health/readiness endpoint if behavior changes.
+- Prefer clear status codes (`400`, `401`, `403`, `404`, `429`, `500`).
+- Include timeout handling for external provider calls.

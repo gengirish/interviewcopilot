@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getUserFromRequest } from "@/lib/server/auth";
+import { getPlan } from "@/lib/server/user-store";
+import { canUseAnswer, getUsage, incrementUsage } from "@/lib/server/usage-store";
+import { getPlanLimit } from "@/lib/server/plans";
+import { trackEvent } from "@/lib/server/event-store";
 
 const ROLE_PERSONAS: Record<string, string> = {
   "ml-engineer": "You are an expert ML/AI Engineer with 5+ years experience in PyTorch, TensorFlow, transformers, LLMs, RAG, fine-tuning, MLOps, and model deployment.",
@@ -9,17 +14,111 @@ const ROLE_PERSONAS: Record<string, string> = {
   "product": "You are a senior Product Manager with experience defining AI product roadmaps, working with engineering teams, and driving metrics-based outcomes.",
 };
 
-export async function POST(req: NextRequest) {
-  const { question, role, resumeText } = await req.json().catch(() => ({}));
+const VALID_ROLES = new Set(Object.keys(ROLE_PERSONAS));
+const MAX_QUESTION_LENGTH = 600;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 20;
 
-  if (!question) return NextResponse.json({ error: "No question provided" }, { status: 400 });
+type RateLimitEntry = { count: number; resetAt: number };
+
+function getIp(req: NextRequest): string {
+  const fwd = req.headers.get("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0]?.trim() || "unknown";
+  return req.headers.get("x-real-ip") || "unknown";
+}
+
+function getStore(): Map<string, RateLimitEntry> {
+  const g = globalThis as typeof globalThis & {
+    __interviewcopilotRateLimitStore?: Map<string, RateLimitEntry>;
+  };
+  if (!g.__interviewcopilotRateLimitStore) {
+    g.__interviewcopilotRateLimitStore = new Map<string, RateLimitEntry>();
+  }
+  return g.__interviewcopilotRateLimitStore;
+}
+
+function checkRateLimit(key: string): boolean {
+  const now = Date.now();
+  const store = getStore();
+  const entry = store.get(key);
+
+  if (!entry || entry.resetAt <= now) {
+    store.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+
+  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) return false;
+  entry.count += 1;
+  store.set(key, entry);
+  return true;
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Timeout")), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const ip = getIp(req);
+  const allowed = checkRateLimit(ip);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please wait a minute and try again." },
+      { status: 429 }
+    );
+  }
+
+  const { question, role, resumeText } = await req.json().catch(() => ({}));
+  const normalizedQuestion = typeof question === "string" ? question.trim() : "";
+  const normalizedRole = typeof role === "string" ? role : "backend";
+  const safeResumeText = typeof resumeText === "string" ? resumeText : "";
+
+  if (!normalizedQuestion) {
+    return NextResponse.json({ error: "No question provided" }, { status: 400 });
+  }
+  if (normalizedQuestion.length > MAX_QUESTION_LENGTH) {
+    return NextResponse.json(
+      { error: `Question is too long. Keep it under ${MAX_QUESTION_LENGTH} characters.` },
+      { status: 400 }
+    );
+  }
+  if (!VALID_ROLES.has(normalizedRole)) {
+    return NextResponse.json({ error: "Invalid role selected." }, { status: 400 });
+  }
+
+  // Billing: enforce quota before generation
+  const user = await getUserFromRequest(req);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const plan = await getPlan(user.id);
+  const usageBefore = await getUsage(user.id);
+  const limit = getPlanLimit(plan);
+  const allowedByPlan = await canUseAnswer(user.id, limit);
+  if (!allowedByPlan) {
+    return NextResponse.json(
+      {
+        error: "Monthly answer limit reached. Upgrade to Pro for unlimited answers.",
+      },
+      { status: 403 }
+    );
+  }
 
   const geminiKey = process.env.GOOGLE_AI_KEY;
   const openrouterKey = process.env.OPENROUTER_API_KEY;
-  const persona = ROLE_PERSONAS[role] || ROLE_PERSONAS["backend"];
+  const persona = ROLE_PERSONAS[normalizedRole] || ROLE_PERSONAS["backend"];
 
-  const resumeContext = resumeText
-    ? `\n\nCandidate resume/background:\n${resumeText.slice(0, 2000)}`
+  const resumeContext = safeResumeText
+    ? `\n\nCandidate resume/background:\n${safeResumeText.slice(0, 2000)}`
     : "";
 
   const fullPrompt = `${persona}
@@ -34,7 +133,7 @@ Rules:
 - Be confident and professional — this is a live interview
 - Start the answer directly — no preamble like "Great question!"
 
-Interview question: "${question}"`;
+Interview question: "${normalizedQuestion}"`;
 
   // 1. Try Gemini 2.0 Flash (primary — free tier)
   if (geminiKey) {
@@ -48,9 +147,15 @@ Interview question: "${question}"`;
         }
       );
       if (res.ok) {
-        const data = await res.json();
+        const data = await withTimeout(res.json(), 10_000);
         const answer = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (answer) return NextResponse.json({ answer, source: "gemini" });
+        if (answer) {
+          await incrementUsage(user.id);
+          if (usageBefore === 0) {
+            await trackEvent(user.id, "first_question_asked", { source: "api" });
+          }
+          return NextResponse.json({ answer, source: "gemini" });
+        }
       }
     } catch {}
   }
@@ -74,17 +179,27 @@ Interview question: "${question}"`;
         }),
       });
       if (res.ok) {
-        const data = await res.json();
+        const data = await withTimeout(res.json(), 10_000);
         const answer = data.choices?.[0]?.message?.content;
-        if (answer) return NextResponse.json({ answer, source: "openrouter" });
+        if (answer) {
+          await incrementUsage(user.id);
+          if (usageBefore === 0) {
+            await trackEvent(user.id, "first_question_asked", { source: "api" });
+          }
+          return NextResponse.json({ answer, source: "openrouter" });
+        }
       }
     } catch {}
   }
 
   // 3. Static fallback — at least make it question-aware
-  const roleLabel = (role || "engineer").replace(/-/g, " ");
-  const isStarQuestion = /tell me about|give me an example|describe a time|when did you/i.test(question);
-  const isTechnicalQuestion = /how does|what is|explain|difference between|why do/i.test(question);
+  const roleLabel = (normalizedRole || "engineer").replace(/-/g, " ");
+  const isStarQuestion = /tell me about|give me an example|describe a time|when did you/i.test(
+    normalizedQuestion
+  );
+  const isTechnicalQuestion = /how does|what is|explain|difference between|why do/i.test(
+    normalizedQuestion
+  );
 
   let answer = "";
   if (isStarQuestion) {
@@ -95,5 +210,9 @@ Interview question: "${question}"`;
     answer = `As a ${roleLabel}, I approach this by focusing on first principles and clear communication with stakeholders.\n\nIn my experience, the key is to break complex problems into manageable pieces, align with the team on priorities, and iterate quickly based on feedback.\n\nI've consistently found that combining technical rigour with strong collaboration leads to the best outcomes — and that's the approach I'd bring to this role.`;
   }
 
+  await incrementUsage(user.id);
+  if (usageBefore === 0) {
+    await trackEvent(user.id, "first_question_asked", { source: "api" });
+  }
   return NextResponse.json({ answer, source: "fallback" });
 }

@@ -1,0 +1,26 @@
+---
+description: Prioritize YC-style product outcomes and velocity
+alwaysApply: true
+---
+
+# YC Outcome Priority
+
+Use this priority order on every task:
+
+1. Improve weekly active users and interview session completion.
+2. Improve first-session activation (signup -> first question answered).
+3. Improve answer quality/reliability and response speed.
+4. Reduce operational risk (auth, quota, data correctness, observability).
+
+Guardrails:
+
+- Ship the smallest end-to-end slice that can be measured.
+- Prefer integrated improvements over isolated refactors.
+- Every feature should include a success metric and verification path.
+- Avoid speculative architecture work unless it unblocks shipping.
+
+Definition of done:
+
+- User-visible behavior improved.
+- API error path is handled.
+- Logs or metrics are available for validation.

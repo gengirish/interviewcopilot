@@ -2,12 +2,35 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
-import { Mic, MicOff, Brain, FileText, Upload, X, ChevronDown, Copy, Check, Loader2 } from "lucide-react";
+import {
+  Mic,
+  MicOff,
+  Brain,
+  FileText,
+  Upload,
+  X,
+  ChevronDown,
+  Copy,
+  Check,
+  Loader2,
+  Send,
+  Download,
+  AlertTriangle,
+  Crown,
+} from "lucide-react";
+import {
+  extractResume,
+  getAnswer,
+  getSubscription,
+  toUserMessage,
+  trackEvent,
+  upgradeToPro,
+} from "@/lib/api";
+import type { QnA, Role, SessionSummary } from "@/lib/types";
+import { SESSIONS_STORAGE_KEY } from "@/lib/types";
+import type { SubscriptionOverview } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-type Role = "ml-engineer" | "data-scientist" | "ai-architect" | "backend" | "fullstack" | "product";
-type QnA = { id: string; question: string; answer: string; timestamp: Date };
-
 const ROLES: { value: Role; label: string; emoji: string }[] = [
   { value: "ml-engineer", label: "ML / AI Engineer", emoji: "🤖" },
   { value: "data-scientist", label: "Data Scientist", emoji: "📊" },
@@ -17,21 +40,60 @@ const ROLES: { value: Role; label: string; emoji: string }[] = [
   { value: "product", label: "Product Manager", emoji: "🎯" },
 ];
 
+const QUICK_QUESTIONS: Record<Role, string[]> = {
+  "ml-engineer": [
+    "Explain overfitting and how to prevent it in production ML systems.",
+    "How would you design a scalable RAG pipeline end-to-end?",
+    "Describe your approach to model monitoring and drift detection.",
+  ],
+  "data-scientist": [
+    "How do you decide whether an A/B test result is actionable?",
+    "How do you handle missing data and outliers in critical analyses?",
+    "Explain bias-variance tradeoff with a real project example.",
+  ],
+  "ai-architect": [
+    "How would you design an enterprise LLM system with security controls?",
+    "What trade-offs drive model/provider selection in production AI systems?",
+    "How do you choose between fine-tuning, RAG, and prompt engineering?",
+  ],
+  backend: [
+    "How do you design resilient microservices for high traffic APIs?",
+    "Explain database indexing strategy for a read-heavy system.",
+    "How do you debug and fix intermittent latency spikes in production?",
+  ],
+  fullstack: [
+    "How do you optimize perceived performance in a Next.js app?",
+    "Explain your approach to frontend-backend contract design.",
+    "How do you make React apps robust under partial API failures?",
+  ],
+  product: [
+    "Tell me about a product decision you made using ambiguous data.",
+    "How do you prioritize roadmap trade-offs under tight deadlines?",
+    "How do you align engineering and business stakeholders on product bets?",
+  ],
+};
+
 // ── Speech Recognition hook ────────────────────────────────────────────────
-function useSpeechRecognition(onQuestion: (q: string) => void) {
+function useSpeechRecognition(onQuestion: (q: string) => void, onError: (msg: string) => void) {
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState("");
   const silenceTimer = useRef<NodeJS.Timeout | null>(null);
   const accumulatedRef = useRef("");
+  const keepListeningRef = useRef(false);
 
   const start = useCallback(() => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SR) return alert("Speech recognition not supported. Use Chrome or Edge.");
+    if (!SR) {
+      onError("Speech recognition is not supported in this browser. Use Chrome or Edge.");
+      return;
+    }
     const r = new SR();
     r.continuous = true;
     r.interimResults = true;
     r.lang = "en-US";
+    keepListeningRef.current = true;
+    onError("");
 
     r.onresult = (e: SpeechRecognitionEvent) => {
       let interim = "";
@@ -58,18 +120,23 @@ function useSpeechRecognition(onQuestion: (q: string) => void) {
         setTranscript((accumulatedRef.current + " " + interim).trim());
       }
     };
-    r.onerror = () => setIsListening(false);
+    r.onerror = () => {
+      setIsListening(false);
+      keepListeningRef.current = false;
+      onError("Microphone error detected. Re-enable mic permission and try again.");
+    };
     r.onend = () => {
-      if (isListening) r.start(); // auto-restart
+      if (keepListeningRef.current) r.start(); // auto-restart
     };
     recognitionRef.current = r;
     r.start();
     setIsListening(true);
-  }, [onQuestion, isListening]);
+  }, [onError, onQuestion]);
 
   const stop = useCallback(() => {
     recognitionRef.current?.stop();
     setIsListening(false);
+    keepListeningRef.current = false;
     accumulatedRef.current = "";
     setTranscript("");
     if (silenceTimer.current) clearTimeout(silenceTimer.current);
@@ -98,7 +165,10 @@ function AnswerCard({ qna }: { qna: QnA }) {
         </button>
       </div>
       <div className="border-t border-neural-border pt-3">
-        <p className="text-neural-cyan text-xs font-mono mb-1">💡 AI Answer:</p>
+        <p className="text-neural-cyan text-xs font-mono mb-1">
+          💡 AI Answer
+          <span className="ml-2 text-neural-muted">({qna.source})</span>
+        </p>
         <p className="text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">{qna.answer}</p>
       </div>
     </div>
@@ -113,58 +183,145 @@ export default function SessionPage() {
   const [qnas, setQnas] = useState<QnA[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState("");
+  const [draftQuestion, setDraftQuestion] = useState("");
+  const [uiError, setUiError] = useState("");
+  const [speechError, setSpeechError] = useState("");
+  const [subscription, setSubscription] = useState<SubscriptionOverview | null>(null);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(true);
+  const [upgrading, setUpgrading] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  const refreshSubscription = useCallback(async () => {
+    try {
+      const data = await getSubscription();
+      setSubscription(data);
+    } catch (err) {
+      setUiError(toUserMessage(err, "Could not load usage quota."));
+    } finally {
+      setSubscriptionLoading(false);
+    }
+  }, []);
+
   const handleQuestion = useCallback(async (question: string) => {
-    setCurrentQuestion(question);
+    const cleanedQuestion = question.trim();
+    if (!cleanedQuestion || loading) return;
+
+    setUiError("");
+    setCurrentQuestion(cleanedQuestion);
     setLoading(true);
     try {
-      const res = await fetch("/api/answer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, role, resumeText }),
-      });
-      const { answer } = await res.json();
+      const { answer, source } = await getAnswer({ question: cleanedQuestion, role, resumeText });
       setQnas((prev) => [...prev, {
         id: Date.now().toString(),
-        question,
+        question: cleanedQuestion,
         answer: answer || "Could not generate answer. Please try again.",
+        source: source || "unknown",
         timestamp: new Date(),
       }]);
-    } catch {
-      setQnas((prev) => [...prev, { id: Date.now().toString(), question, answer: "Network error. Please check connection.", timestamp: new Date() }]);
+      await refreshSubscription();
+    } catch (err) {
+      const message = toUserMessage(err, "Network error. Please check your connection.");
+      setUiError(message);
+      setQnas((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          question: cleanedQuestion,
+          answer: "Could not generate answer right now.",
+          source: "unknown",
+          timestamp: new Date(),
+        },
+      ]);
     } finally {
       setLoading(false);
       setCurrentQuestion("");
+      setDraftQuestion("");
     }
-  }, [role, resumeText]);
+  }, [loading, refreshSubscription, role, resumeText]);
 
-  const { isListening, transcript, start, stop } = useSpeechRecognition(handleQuestion);
+  const { isListening, transcript, start, stop } = useSpeechRecognition(handleQuestion, setSpeechError);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [qnas]);
 
+  useEffect(() => {
+    void refreshSubscription();
+  }, [refreshSubscription]);
+
+  // Persist session summary to localStorage when user asks questions
+  useEffect(() => {
+    if (qnas.length === 0) return;
+    try {
+      const raw = localStorage.getItem(SESSIONS_STORAGE_KEY);
+      const sessions: SessionSummary[] = raw ? (JSON.parse(raw) as SessionSummary[]) : [];
+      if (qnas.length === 1) {
+        sessions.push({ timestamp: Date.now(), count: 1 });
+      } else {
+        const last = sessions[sessions.length - 1];
+        if (last) {
+          sessions[sessions.length - 1] = { ...last, count: qnas.length };
+        } else {
+          sessions.push({ timestamp: Date.now(), count: qnas.length });
+        }
+      }
+      localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
+    } catch {
+      // ignore localStorage errors
+    }
+  }, [qnas]);
+
   const handleFileUpload = async (file: File) => {
     setResumeName(file.name);
+    setUiError("");
     if (file.type === "text/plain") {
       const text = await file.text();
-      setResumeText(text);
-    } else {
-      // For PDF, send to API for parsing
-      const formData = new FormData();
-      formData.append("file", file);
-      try {
-        const res = await fetch("/api/extract-resume", { method: "POST", body: formData });
-        const { text } = await res.json();
-        setResumeText(text || "");
-      } catch {
-        setResumeText("Could not parse PDF. Please paste resume text below.");
-      }
+      setResumeText(text.slice(0, 4000));
+      return;
+    }
+
+    try {
+      const { text } = await extractResume(file);
+      setResumeText(text || "");
+    } catch (err) {
+      setResumeText("");
+      setUiError(toUserMessage(err, "Could not parse PDF. Please paste resume text below."));
     }
   };
+
+  const submitTypedQuestion = useCallback(() => {
+    void handleQuestion(draftQuestion);
+  }, [draftQuestion, handleQuestion]);
+
+  const exportTranscript = useCallback(() => {
+    if (!qnas.length) return;
+    const data = qnas
+      .map((entry) => {
+        return [
+          `[${entry.timestamp.toLocaleTimeString()}] QUESTION`,
+          entry.question,
+          "",
+          `[${entry.timestamp.toLocaleTimeString()}] ANSWER (${entry.source})`,
+          entry.answer,
+          "",
+          "-----",
+          "",
+        ].join("\n");
+      })
+      .join("\n");
+
+    const blob = new Blob([data], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `interviewcopilot-session-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, [qnas]);
 
   if (!sessionStarted) {
     return (
@@ -180,6 +337,16 @@ export default function SessionPage() {
           </div>
 
           <div className="space-y-5 rounded-2xl border border-neural-border bg-neural-surface p-8">
+            {!subscriptionLoading && subscription && (
+              <div className="rounded-xl border border-neural-border bg-neural-bg p-3 text-xs text-neural-muted">
+                Plan: <span className="text-white font-semibold capitalize">{subscription.plan}</span>
+                {" · "}
+                Remaining this month:{" "}
+                <span className="text-white font-semibold">
+                  {subscription.remaining === "unlimited" ? "unlimited" : subscription.remaining}
+                </span>
+              </div>
+            )}
             {/* Role selector */}
             <div>
               <label className="block text-sm font-medium text-neural-muted mb-2">Your role</label>
@@ -232,10 +399,41 @@ export default function SessionPage() {
             </div>
 
             <button
-              onClick={() => setSessionStarted(true)}
+              onClick={async () => {
+                setSessionStarted(true);
+                try {
+                  await trackEvent("session_started");
+                } catch {}
+              }}
               className="w-full py-4 rounded-xl bg-neural-cyan text-black font-bold hover:bg-cyan-300 transition-colors flex items-center justify-center gap-2 text-lg">
               <Mic className="w-5 h-5" /> Start Session
             </button>
+            {subscription?.plan === "free" && (
+              <button
+                onClick={async () => {
+                  setUiError("");
+                  setUpgrading(true);
+                  try {
+                    await upgradeToPro();
+                    await refreshSubscription();
+                  } catch (err) {
+                    setUiError(toUserMessage(err, "Could not upgrade plan right now."));
+                  } finally {
+                    setUpgrading(false);
+                  }
+                }}
+                disabled={upgrading}
+                className="w-full py-3 rounded-xl border border-neural-cyan/40 text-neural-cyan font-semibold hover:bg-neural-cyan/10 transition-colors disabled:opacity-50 inline-flex items-center justify-center gap-2"
+              >
+                <Crown className="w-4 h-4" /> {upgrading ? "Upgrading..." : "Upgrade to Pro (Mock)"}
+              </button>
+            )}
+            {uiError && (
+              <div className="rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-200 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                {uiError}
+              </div>
+            )}
             <p className="text-xs text-neural-muted text-center">Microphone permission required. Works best in Chrome/Edge.</p>
           </div>
         </div>
@@ -263,10 +461,63 @@ export default function SessionPage() {
                 <FileText className="w-3 h-3" /> Resume loaded
               </span>
             )}
+            {qnas.length > 0 && (
+              <button
+                onClick={exportTranscript}
+                className="text-xs text-neural-muted hover:text-white transition-colors inline-flex items-center gap-1"
+              >
+                <Download className="w-3 h-3" /> Export
+              </button>
+            )}
+            <Link href="/dashboard" className="text-xs text-neural-muted hover:text-white transition-colors">Dashboard</Link>
+            <button
+              onClick={async () => {
+                await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+                window.location.href = "/login";
+              }}
+              className="text-xs text-neural-muted hover:text-white transition-colors"
+            >
+              Logout
+            </button>
             <Link href="/" className="text-xs text-neural-muted hover:text-white transition-colors">Exit</Link>
           </div>
         </div>
       </header>
+
+      {subscription && (
+        <div className="border-b border-neural-border bg-neural-surface/60 px-4 py-2">
+          <div className="max-w-4xl mx-auto flex items-center justify-between text-xs text-neural-muted">
+            <span>
+              Plan: <span className="text-white font-semibold capitalize">{subscription.plan}</span>
+              {" · "}
+              Remaining this month:{" "}
+              <span className="text-white font-semibold">
+                {subscription.remaining === "unlimited" ? "unlimited" : subscription.remaining}
+              </span>
+            </span>
+            {subscription.plan === "free" && (
+              <button
+                onClick={async () => {
+                  setUiError("");
+                  setUpgrading(true);
+                  try {
+                    await upgradeToPro();
+                    await refreshSubscription();
+                  } catch (err) {
+                    setUiError(toUserMessage(err, "Could not upgrade plan right now."));
+                  } finally {
+                    setUpgrading(false);
+                  }
+                }}
+                disabled={upgrading}
+                className="text-neural-cyan hover:text-cyan-300 disabled:opacity-50 inline-flex items-center gap-1"
+              >
+                <Crown className="w-3 h-3" /> {upgrading ? "Upgrading..." : "Upgrade"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Q&A feed */}
       <div className="flex-1 max-w-4xl w-full mx-auto px-4 py-6 space-y-4 overflow-y-auto">
@@ -289,6 +540,48 @@ export default function SessionPage() {
             </div>
           </div>
         )}
+        {uiError && (
+          <div className="rounded-xl border border-red-400/40 bg-red-500/10 p-3 text-sm text-red-200 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            {uiError}
+          </div>
+        )}
+        <div className="rounded-xl border border-neural-border bg-neural-surface/70 p-3">
+          <p className="text-xs text-neural-muted font-mono mb-2">Quick start questions</p>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {QUICK_QUESTIONS[role].map((q) => (
+              <button
+                key={q}
+                onClick={() => setDraftQuestion(q)}
+                className="rounded-full border border-neural-border px-3 py-1 text-xs text-neural-muted hover:text-white hover:border-neural-cyan/40 transition-colors"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-neural-muted font-mono mb-2">Type question manually</p>
+          <div className="flex items-center gap-2">
+            <input
+              value={draftQuestion}
+              onChange={(e) => setDraftQuestion(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  submitTypedQuestion();
+                }
+              }}
+              placeholder="e.g. Explain overfitting and how to prevent it"
+              className="flex-1 rounded-lg border border-neural-border bg-neural-bg px-3 py-2 text-sm text-white placeholder-neural-muted focus:outline-none focus:border-neural-cyan/50"
+            />
+            <button
+              onClick={submitTypedQuestion}
+              disabled={loading || !draftQuestion.trim() || subscription?.remaining === 0}
+              className="inline-flex items-center gap-2 rounded-lg bg-neural-cyan px-3 py-2 text-sm font-semibold text-black disabled:opacity-50"
+            >
+              <Send className="w-4 h-4" /> Ask
+            </button>
+          </div>
+        </div>
         <div ref={bottomRef} />
       </div>
 
@@ -306,13 +599,27 @@ export default function SessionPage() {
       <div className="border-t border-neural-border bg-neural-bg px-4 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
           <div className="text-sm text-neural-muted">
-            {isListening
-              ? <span className="text-neural-green flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 animate-pulse inline-block" /> Listening — speak now</span>
-              : <span>Click to start listening</span>}
+            {speechError ? (
+              <span className="text-red-300 flex items-center gap-1">
+                <AlertTriangle className="w-4 h-4" /> {speechError}
+              </span>
+            ) : isListening ? (
+              <span className="text-neural-green flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse inline-block" /> Listening — speak now
+              </span>
+            ) : (
+              <span>Click to start listening</span>
+            )}
           </div>
           <div className="flex items-center gap-3">
             {qnas.length > 0 && (
-              <button onClick={() => setQnas([])} className="text-xs text-neural-muted hover:text-red-400 transition-colors">
+              <button
+                onClick={() => {
+                  setQnas([]);
+                  setUiError("");
+                }}
+                className="text-xs text-neural-muted hover:text-red-400 transition-colors"
+              >
                 Clear session
               </button>
             )}

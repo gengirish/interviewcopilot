@@ -1,8 +1,10 @@
 "use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Mic, Brain, FileText, Shield, Zap, CheckCircle, ArrowRight, Star } from "lucide-react";
+import { getCurrentUser } from "@/lib/api";
 
-function Navbar() {
+function Navbar({ isLoggedIn }: { isLoggedIn: boolean }) {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-neural-border bg-neural-bg/80 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -16,16 +18,28 @@ function Navbar() {
           <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
           <a href="#roles" className="hover:text-white transition-colors">Roles</a>
         </div>
-        <Link href="/session"
-          className="px-4 py-2 rounded-lg text-sm font-bold bg-neural-cyan text-black hover:bg-cyan-300 transition-colors">
-          Start Free Session
-        </Link>
+        <div className="flex items-center gap-3">
+          {!isLoggedIn && (
+            <Link href="/login" className="text-sm text-neural-muted hover:text-white transition-colors">
+              Login
+            </Link>
+          )}
+          {isLoggedIn && (
+            <Link href="/dashboard" className="text-sm text-neural-muted hover:text-white transition-colors">
+              Dashboard
+            </Link>
+          )}
+          <Link href="/session"
+            className="px-4 py-2 rounded-lg text-sm font-bold bg-neural-cyan text-black hover:bg-cyan-300 transition-colors">
+            {isLoggedIn ? "Continue Session" : "Start Free Session"}
+          </Link>
+        </div>
       </div>
     </nav>
   );
 }
 
-function Hero() {
+function Hero({ isLoggedIn }: { isLoggedIn: boolean }) {
   return (
     <section className="relative pt-32 pb-20 px-4 overflow-hidden">
       <div className="absolute inset-0 pointer-events-none">
@@ -48,7 +62,7 @@ function Hero() {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
           <Link href="/session"
             className="flex items-center gap-2 px-8 py-4 rounded-xl font-bold text-black bg-neural-cyan hover:bg-cyan-300 transition-all glow-cyan text-lg">
-            Start Free Session <ArrowRight className="w-5 h-5" />
+            {isLoggedIn ? "Continue Interview Session" : "Start Free Session"} <ArrowRight className="w-5 h-5" />
           </Link>
           <div className="flex items-center gap-2 text-neural-muted text-sm">
             <CheckCircle className="w-4 h-4 text-neural-green" />
@@ -184,12 +198,12 @@ function Pricing() {
     {
       name:"Pro", price:"₹499", period:"/month", highlight:true,
       features:["Unlimited sessions","Unlimited duration","All 6 role modes","Resume-aware answers","STAR format","Session history & export","Priority AI (Claude Sonnet)"],
-      cta:"Start Pro — ₹499/mo", href:"/session?plan=pro",
+      cta:"Upgrade to Pro", href:"/dashboard",
     },
     {
       name:"IntelliForge", price:"₹299", period:"/month", highlight:false,
       features:["Everything in Pro","For IntelliForge students","Use code: INTELLIFORGE","Exclusive AI interview prep course","Community mock interviews"],
-      cta:"Student Plan", href:"/session?plan=student",
+      cta:"Get Student Plan", href:"/dashboard",
     },
   ];
   return (
@@ -252,10 +266,18 @@ function Footer() {
 }
 
 export default function HomePage() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    getCurrentUser()
+      .then((user) => setIsLoggedIn(Boolean(user)))
+      .catch(() => setIsLoggedIn(false));
+  }, []);
+
   return (
     <main className="min-h-screen bg-neural-bg">
-      <Navbar />
-      <Hero />
+      <Navbar isLoggedIn={isLoggedIn} />
+      <Hero isLoggedIn={isLoggedIn} />
       <HowItWorks />
       <Features />
       <Roles />

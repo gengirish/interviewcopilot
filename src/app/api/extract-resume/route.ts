@@ -1,14 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
+const SUPPORTED_TYPES = new Set(["text/plain", "application/pdf"]);
+
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
     if (!file) return NextResponse.json({ error: "No file" }, { status: 400 });
+    if (!SUPPORTED_TYPES.has(file.type)) {
+      return NextResponse.json(
+        { error: "Unsupported file type. Upload a .txt or .pdf file." },
+        { status: 400 }
+      );
+    }
+    if (file.size > MAX_FILE_BYTES) {
+      return NextResponse.json(
+        { error: "File is too large. Keep it under 5MB." },
+        { status: 400 }
+      );
+    }
 
     if (file.type === "text/plain") {
       const text = await file.text();
-      return NextResponse.json({ text });
+      return NextResponse.json({ text: text.slice(0, 4000) });
     }
 
     // PDF — use pdf-parse
