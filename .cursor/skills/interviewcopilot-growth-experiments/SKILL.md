@@ -1,6 +1,6 @@
 ---
-name: interviewcopilot-growth-experiments
-description: Designs and implements growth experiments for InterviewCopilot. Use when improving landing conversion, onboarding, pricing, upgrade prompts, engagement loops, or analytics instrumentation.
+name: infinityhire-growth-experiments
+description: Designs and implements growth experiments for InfinityHire Copilot. Use when improving landing conversion, onboarding, pricing, upgrade prompts, engagement loops, or analytics instrumentation.
 ---
 
 # Growth Experiments

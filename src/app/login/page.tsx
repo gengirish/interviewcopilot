@@ -53,7 +53,7 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-6">
             <Mic className="w-7 h-7 text-neural-cyan" />
-            <span className="font-bold text-xl text-white">InterviewCopilot</span>
+            <span className="font-bold text-xl text-white">InfinityHire Copilot</span>
           </Link>
           <h1 className="text-2xl font-bold text-white mb-2">
             {tab === "login" ? "Welcome back" : "Create account"}

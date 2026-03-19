@@ -316,7 +316,7 @@ export default function SessionPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `interviewcopilot-session-${new Date().toISOString().slice(0, 10)}.txt`;
+    link.download = `infinityhire-session-${new Date().toISOString().slice(0, 10)}.txt`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -330,7 +330,7 @@ export default function SessionPage() {
           <div className="text-center mb-8">
             <Link href="/" className="inline-flex items-center gap-2 mb-6">
               <Mic className="w-7 h-7 text-neural-cyan" />
-              <span className="font-bold text-xl text-white">InterviewCopilot</span>
+              <span className="font-bold text-xl text-white">InfinityHire Copilot</span>
             </Link>
             <h1 className="text-3xl font-bold text-white mb-2">Set up your session</h1>
             <p className="text-neural-muted text-sm">Takes 30 seconds. Works with any Zoom/Meet/Teams call.</p>
@@ -450,7 +450,7 @@ export default function SessionPage() {
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Mic className="w-5 h-5 text-neural-cyan" />
-            <span className="font-bold text-white">InterviewCopilot</span>
+            <span className="font-bold text-white">InfinityHire Copilot</span>
             <span className="text-xs px-2 py-0.5 rounded-full bg-neural-surface border border-neural-border text-neural-muted">
               {selectedRole.emoji} {selectedRole.label}
             </span>

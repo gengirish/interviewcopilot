@@ -1,9 +1,9 @@
 ---
-name: interviewcopilot-yc-ship
-description: Executes high-impact YC shipping cycles for InterviewCopilot. Use when planning or implementing features that should improve activation, retention, monetization, reliability, or weekly growth metrics.
+name: infinityhire-yc-ship
+description: Executes high-impact YC shipping cycles for InfinityHire Copilot. Use when planning or implementing features that should improve activation, retention, monetization, reliability, or weekly growth metrics.
 ---
 
-# InterviewCopilot YC Ship Loop
+# InfinityHire Copilot YC Ship Loop
 
 ## Objective
 

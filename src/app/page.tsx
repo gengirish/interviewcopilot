@@ -10,7 +10,7 @@ function Navbar({ isLoggedIn }: { isLoggedIn: boolean }) {
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Mic className="w-6 h-6 text-neural-cyan" />
-          <span className="font-bold text-lg text-white">InterviewCopilot</span>
+          <span className="font-bold text-lg text-white">InfinityHire Copilot</span>
           <span className="text-xs px-2 py-0.5 rounded-full border border-neural-cyan/30 text-neural-cyan font-mono">AI</span>
         </div>
         <div className="hidden md:flex items-center gap-6 text-sm text-neural-muted">
@@ -76,7 +76,7 @@ function Hero({ isLoggedIn }: { isLoggedIn: boolean }) {
             <span className="ml-1">4.9/5</span>
           </div>
           <span>·</span>
-          <span>Built for IntelliForge AI learners</span>
+          <span>Built for high-stakes interview prep</span>
           <span>·</span>
           <span>🇮🇳 India-first pricing</span>
         </div>
@@ -88,7 +88,7 @@ function Hero({ isLoggedIn }: { isLoggedIn: boolean }) {
 function HowItWorks() {
   const steps = [
     { n:"01", icon: FileText, title:"Upload resume", desc:"Paste your resume or upload PDF. AI uses it for personalised, context-aware answers." },
-    { n:"02", icon: Mic, title:"Start your interview", desc:"Join your Zoom/Meet/Teams call. Open InterviewCopilot in a separate browser tab." },
+    { n:"02", icon: Mic, title:"Start your interview", desc:"Join your Zoom/Meet/Teams call. Open InfinityHire Copilot in a separate browser tab." },
     { n:"03", icon: Brain, title:"Get instant answers", desc:"Speak questions aloud. AI transcribes in real-time and generates tailored answers in seconds." },
   ];
   return (
@@ -201,9 +201,9 @@ function Pricing() {
       cta:"Upgrade to Pro", href:"/dashboard",
     },
     {
-      name:"IntelliForge", price:"₹299", period:"/month", highlight:false,
-      features:["Everything in Pro","For IntelliForge students","Use code: INTELLIFORGE","Exclusive AI interview prep course","Community mock interviews"],
-      cta:"Get Student Plan", href:"/dashboard",
+      name:"Team", price:"₹999", period:"/month", highlight:false,
+      features:["Everything in Pro","Multi-user collaboration","Shared interview analytics","Priority support","Advanced exports"],
+      cta:"Contact Sales", href:"/dashboard",
     },
   ];
   return (
@@ -211,9 +211,9 @@ function Pricing() {
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-14">
           <h2 className="text-4xl font-bold text-white mb-4">
-            13× cheaper than <span className="gradient-text">Parakeet AI</span>
+            Pricing built for fast iteration
           </h2>
-          <p className="text-neural-muted text-lg">Parakeet charges ₹6,730/mo. We charge ₹499. Same AI power.</p>
+          <p className="text-neural-muted text-lg">Start free, upgrade when quota pressure proves value.</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
           {tiers.map((t) => (
@@ -249,12 +249,10 @@ function Footer() {
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <Mic className="w-5 h-5 text-neural-cyan" />
-          <span className="font-bold text-white">InterviewCopilot</span>
+          <span className="font-bold text-white">InfinityHire Copilot</span>
         </div>
         <p className="text-sm text-neural-muted text-center">
-          Built by <a href="https://www.intelliforge.tech" target="_blank" rel="noopener noreferrer" className="text-neural-cyan hover:underline">IntelliForge AI</a>
-          {" "}· <a href="https://www.intelliforge.tech" target="_blank" rel="noopener noreferrer" className="text-neural-purple hover:underline">#BuildwithAiGiri</a>
-          {" "}MVP #10
+          InfinityHire Copilot · AI Interview Intelligence
         </p>
         <div className="flex gap-4 text-sm text-neural-muted">
           <Link href="/session" className="hover:text-white">Free Session</Link>

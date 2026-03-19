@@ -1,6 +1,6 @@
-# InterviewCopilot
+# InfinityHire Copilot
 
-India-first, real-time AI interview copilot built with Next.js 14.
+AI interview intelligence platform built with Next.js 14.
 
 ## Product Direction
 
@@ -26,7 +26,7 @@ npm install
 OPENROUTER_API_KEY=sk-or-v1-...
 # optional
 GOOGLE_AI_KEY=...
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/interviewcopilot
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/infinityhire_copilot
 ```
 
 3. Run app

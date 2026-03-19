@@ -29,12 +29,12 @@ function getIp(req: NextRequest): string {
 
 function getStore(): Map<string, RateLimitEntry> {
   const g = globalThis as typeof globalThis & {
-    __interviewcopilotRateLimitStore?: Map<string, RateLimitEntry>;
+    __infinityhireRateLimitStore?: Map<string, RateLimitEntry>;
   };
-  if (!g.__interviewcopilotRateLimitStore) {
-    g.__interviewcopilotRateLimitStore = new Map<string, RateLimitEntry>();
+  if (!g.__infinityhireRateLimitStore) {
+    g.__infinityhireRateLimitStore = new Map<string, RateLimitEntry>();
   }
-  return g.__interviewcopilotRateLimitStore;
+  return g.__infinityhireRateLimitStore;
 }
 
 function checkRateLimit(key: string): boolean {
@@ -168,8 +168,8 @@ Interview question: "${normalizedQuestion}"`;
         headers: {
           Authorization: `Bearer ${openrouterKey}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": "https://interview.intelliforge.digital",
-          "X-Title": "InterviewCopilot — IntelliForge AI",
+          "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://interview.intelliforge.digital",
+          "X-Title": "InfinityHire Copilot",
         },
         body: JSON.stringify({
           model: "anthropic/claude-3-haiku",

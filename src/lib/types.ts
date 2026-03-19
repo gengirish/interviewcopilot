@@ -38,4 +38,4 @@ export interface SessionSummary {
   count: number;
 }
 
-export const SESSIONS_STORAGE_KEY = "interviewcopilot.sessions";
+export const SESSIONS_STORAGE_KEY = "infinityhire-copilot.sessions";

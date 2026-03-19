@@ -1,6 +1,6 @@
 ---
-name: interviewcopilot-release-gates
-description: Applies pre-release quality gates for InterviewCopilot. Use before merge/deploy to verify auth, billing quota, analytics correctness, and session reliability.
+name: infinityhire-release-gates
+description: Applies pre-release quality gates for InfinityHire Copilot. Use before merge/deploy to verify auth, billing quota, analytics correctness, and session reliability.
 ---
 
 # Release Gates

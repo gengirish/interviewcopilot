@@ -42,7 +42,7 @@ export default function SignupPage() {
       <div className="max-w-sm w-full">
         <Link href="/" className="inline-flex items-center gap-2 mb-8">
           <Mic className="w-7 h-7 text-neural-cyan" />
-          <span className="font-bold text-xl text-white">InterviewCopilot</span>
+          <span className="font-bold text-xl text-white">InfinityHire Copilot</span>
         </Link>
         <div className="rounded-2xl border border-neural-border bg-neural-surface p-8">
           <h1 className="text-2xl font-bold text-white mb-2">Sign up</h1>
