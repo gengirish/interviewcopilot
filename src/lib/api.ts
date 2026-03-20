@@ -1,4 +1,7 @@
 import type {
+  AnalyticsFunnelResponse,
+  AnswerFeedbackPayload,
+  AnswerFeedbackSummary,
   AnswerRequest,
   AnswerResponse,
   ExtractResumeResponse,
@@ -82,6 +85,18 @@ export async function getAnalyticsOverview(): Promise<AnalyticsOverview> {
   return data;
 }
 
+export type { AnalyticsFunnelResponse };
+
+export async function getAnalyticsFunnel(windowDays: 7 | 30 = 30): Promise<AnalyticsFunnelResponse> {
+  const q = windowDays === 7 ? "?window=7" : "";
+  const res = await fetch(`/api/analytics/funnel${q}`);
+  const data = await parseJson<AnalyticsFunnelResponse & { error?: string }>(res);
+  if (!res.ok) {
+    throw new ApiError(res.status, data.error || "Failed to load funnel analytics");
+  }
+  return data;
+}
+
 export async function getSubscription(): Promise<SubscriptionOverview> {
   const res = await fetch("/api/billing/subscription");
   const data = await parseJson<SubscriptionOverview>(res);
@@ -119,4 +134,27 @@ export async function trackEvent(eventType: "session_started" | "first_question_
   if (!res.ok && res.status !== 401) {
     throw new ApiError(res.status, "Failed to track event");
   }
+}
+
+export async function submitAnswerFeedback(payload: AnswerFeedbackPayload): Promise<{ ok: true }> {
+  const res = await fetch("/api/feedback/answer", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<{ ok?: boolean; error?: string }>(res);
+  if (!res.ok) {
+    throw new ApiError(res.status, data.error || "Failed to submit feedback");
+  }
+  return { ok: true };
+}
+
+export async function getAnswerFeedbackSummary(monthKey?: string): Promise<AnswerFeedbackSummary> {
+  const q = monthKey ? `?month=${encodeURIComponent(monthKey)}` : "";
+  const res = await fetch(`/api/feedback/summary${q}`);
+  const data = await parseJson<AnswerFeedbackSummary & { error?: string }>(res);
+  if (!res.ok) {
+    throw new ApiError(res.status, data.error || "Failed to load feedback summary");
+  }
+  return data;
 }

@@ -16,7 +16,7 @@ function Navbar({ isLoggedIn }: { isLoggedIn: boolean }) {
         <div className="hidden md:flex items-center gap-6 text-sm text-neural-muted">
           <a href="#features" className="hover:text-white transition-colors">Features</a>
           <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
-          <a href="#roles" className="hover:text-white transition-colors">Roles</a>
+          <a href="#roles" className="hover:text-white transition-colors">Use Cases</a>
         </div>
         <div className="flex items-center gap-3">
           {!isLoggedIn && (
@@ -31,7 +31,7 @@ function Navbar({ isLoggedIn }: { isLoggedIn: boolean }) {
           )}
           <Link href="/session"
             className="px-4 py-2 rounded-lg text-sm font-bold bg-neural-cyan text-black hover:bg-cyan-300 transition-colors">
-            {isLoggedIn ? "Continue Session" : "Start Free Session"}
+            {isLoggedIn ? "Continue Session" : "Start Free"}
           </Link>
         </div>
       </div>
@@ -49,25 +49,31 @@ function Hero({ isLoggedIn }: { isLoggedIn: boolean }) {
       <div className="relative max-w-5xl mx-auto text-center">
         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-neural-cyan/30 bg-neural-cyan/5 text-neural-cyan text-sm font-mono mb-8">
           <Mic className="w-4 h-4 animate-pulse" />
-          Real-time AI answers during live interviews
+          AI copilot for faster, smarter, and fairer interview decisions
         </div>
         <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white leading-tight mb-6">
-          Ace every interview with{" "}
-          <span className="gradient-text">AI by your side.</span>
+          Hire with confidence,{" "}
+          <span className="gradient-text">not guesswork.</span>
         </h1>
         <p className="text-xl text-neural-muted max-w-3xl mx-auto mb-10 leading-relaxed">
-          Upload your resume. Start your session. Get instant AI-powered answers to every interview question in real-time.
-          Built specifically for <strong className="text-white">AI, ML, Data Science, and software engineering</strong> roles.
+          Run structured interviews, generate real-time candidate insights, and turn every interview into hiring intelligence.
+          Built for <strong className="text-white">high-growth hiring teams and tech interview loops.</strong>
         </p>
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-3">
           <Link href="/session"
             className="flex items-center gap-2 px-8 py-4 rounded-xl font-bold text-black bg-neural-cyan hover:bg-cyan-300 transition-all glow-cyan text-lg">
-            {isLoggedIn ? "Continue Interview Session" : "Start Free Session"} <ArrowRight className="w-5 h-5" />
+            {isLoggedIn ? "Continue Interview Session" : "Start Free"} <ArrowRight className="w-5 h-5" />
           </Link>
-          <div className="flex items-center gap-2 text-neural-muted text-sm">
-            <CheckCircle className="w-4 h-4 text-neural-green" />
-            No install required — works in your browser
-          </div>
+          <a
+            href="mailto:hello@infinityhire.ai?subject=InfinityHire%20Copilot%20Demo"
+            className="flex items-center gap-2 px-8 py-4 rounded-xl font-bold border-2 border-neural-cyan/50 text-neural-cyan hover:bg-neural-cyan/10 hover:border-neural-cyan transition-all text-lg"
+          >
+            Book Demo
+          </a>
+        </div>
+        <div className="flex items-center justify-center gap-2 text-neural-muted text-sm mb-12">
+          <CheckCircle className="w-4 h-4 text-neural-green" />
+          No install required — works in your browser
         </div>
         {/* Social proof */}
         <div className="flex items-center justify-center gap-6 text-sm text-neural-muted">
@@ -76,7 +82,7 @@ function Hero({ isLoggedIn }: { isLoggedIn: boolean }) {
             <span className="ml-1">4.9/5</span>
           </div>
           <span>·</span>
-          <span>Built for high-stakes interview prep</span>
+          <span>Designed for structured interview quality</span>
           <span>·</span>
           <span>🇮🇳 India-first pricing</span>
         </div>
@@ -168,9 +174,9 @@ function Roles() {
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-14">
           <h2 className="text-4xl font-bold text-white mb-4">
-            Optimised for <span className="gradient-text">every tech role</span>
+            Optimised for <span className="gradient-text">modern hiring workflows</span>
           </h2>
-          <p className="text-neural-muted text-lg">Role-specific answer modes trained on real interview questions.</p>
+          <p className="text-neural-muted text-lg">Role-specific support for teams hiring across technical and product roles.</p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {roles.map((r) => (
@@ -211,9 +217,9 @@ function Pricing() {
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-14">
           <h2 className="text-4xl font-bold text-white mb-4">
-            Pricing built for fast iteration
+            Pricing built for fast-moving teams
           </h2>
-          <p className="text-neural-muted text-lg">Start free, upgrade when quota pressure proves value.</p>
+          <p className="text-neural-muted text-lg">Start free, prove value in live interviews, then scale with your team.</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
           {tiers.map((t) => (
@@ -252,11 +258,11 @@ function Footer() {
           <span className="font-bold text-white">InfinityHire Copilot</span>
         </div>
         <p className="text-sm text-neural-muted text-center">
-          InfinityHire Copilot · AI Interview Intelligence
+          InfinityHire Copilot · AI copilot for interview intelligence
         </p>
         <div className="flex gap-4 text-sm text-neural-muted">
           <Link href="/session" className="hover:text-white">Free Session</Link>
-          <a href="mailto:girish@intelliforge.tech" className="hover:text-white">Support</a>
+          <a href="mailto:hello@infinityhire.ai" className="hover:text-white">Support</a>
         </div>
       </div>
     </footer>

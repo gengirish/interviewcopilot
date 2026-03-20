@@ -15,6 +15,35 @@ test.describe("Dashboard and billing", () => {
     await expect(page).toHaveURL(/\/login/);
   });
 
+  test("dashboard loads funnel analytics overview and activation score (no crash)", async ({
+    page,
+  }, testInfo) => {
+    const email = `e2e+funnel-${Date.now()}-${testInfo.workerIndex}@example.com`;
+    await signupAndLogin(page, email);
+
+    const overviewPromise = page.waitForResponse(
+      (res) => res.url().includes("/api/analytics/overview") && res.request().method() === "GET",
+    );
+
+    await page.goto("/dashboard");
+    const overviewRes = await overviewPromise;
+    expect(overviewRes.ok()).toBeTruthy();
+
+    const body = (await overviewRes.json()) as {
+      plan?: string;
+      activation?: { score?: number; completed?: string[]; pending?: string[] };
+    };
+    expect(body).toHaveProperty("activation");
+    expect(typeof (body.activation?.score ?? 0)).toBe("number");
+
+    await expect(page.getByRole("heading", { name: /interview analytics/i })).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(page.getByRole("heading", { name: /activation score/i })).toBeVisible();
+    await expect(page.getByText(/completed:/i)).toBeVisible();
+    await expect(page.getByText(/remaining:/i)).toBeVisible();
+  });
+
   test("free user can upgrade to pro from dashboard", async ({ page }, testInfo) => {
     const email = `e2e+dash-${Date.now()}-${testInfo.workerIndex}@example.com`;
     await signupAndLogin(page, email);

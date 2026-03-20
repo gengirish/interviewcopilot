@@ -17,16 +17,19 @@ import {
   Download,
   AlertTriangle,
   Crown,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import {
   extractResume,
   getAnswer,
   getSubscription,
+  submitAnswerFeedback,
   toUserMessage,
   trackEvent,
   upgradeToPro,
 } from "@/lib/api";
-import type { QnA, Role, SessionSummary } from "@/lib/types";
+import type { AnswerFeedbackRating, QnA, Role, SessionSummary } from "@/lib/types";
 import { SESSIONS_STORAGE_KEY } from "@/lib/types";
 import type { SubscriptionOverview } from "@/lib/api";
 
@@ -72,6 +75,10 @@ const QUICK_QUESTIONS: Record<Role, string[]> = {
     "How do you align engineering and business stakeholders on product bets?",
   ],
 };
+
+/** Prefilled when landing with ?demo=1 — realistic senior ML/systems-style prompt */
+const DEMO_SAMPLE_QUESTION =
+  "Walk me through how you would design, train, validate, and deploy a production ML model for real-time fraud detection, including monitoring, drift handling, and safe rollback.";
 
 // ── Speech Recognition hook ────────────────────────────────────────────────
 function useSpeechRecognition(onQuestion: (q: string) => void, onError: (msg: string) => void) {
@@ -145,14 +152,78 @@ function useSpeechRecognition(onQuestion: (q: string) => void, onError: (msg: st
   return { isListening, transcript, start, stop };
 }
 
+function QuotaUrgencyBanner({
+  remaining,
+  upgrading,
+  onUpgrade,
+}: {
+  remaining: number;
+  upgrading: boolean;
+  onUpgrade: () => void | Promise<void>;
+}) {
+  const out = remaining === 0;
+  return (
+    <div
+      role="status"
+      className="rounded-xl border border-neural-purple/50 bg-gradient-to-r from-neural-purple/25 via-neural-bg to-neural-cyan/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+    >
+      <div className="flex items-start gap-3 min-w-0">
+        <AlertTriangle className="w-5 h-5 text-neural-cyan flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-white font-semibold text-sm">
+            {out ? "Free quota exhausted" : "Almost out of free answers"}
+          </p>
+          <p className="text-neural-muted text-xs mt-1 leading-relaxed">
+            {out
+              ? "You've used all included answers this billing period."
+              : `Only ${remaining} free answer${remaining === 1 ? "" : "s"} left this month.`}{" "}
+            Upgrade for unlimited usage and priority AI.
+          </p>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => void onUpgrade()}
+        disabled={upgrading}
+        className="inline-flex items-center justify-center gap-2 rounded-xl bg-neural-cyan px-5 py-2.5 text-sm font-bold text-black hover:bg-cyan-300 transition-colors disabled:opacity-50 whitespace-nowrap shrink-0 shadow-[0_0_20px_rgba(0,212,255,0.25)]"
+      >
+        <Crown className="w-4 h-4" />
+        {upgrading ? "Upgrading..." : "Upgrade to Pro"}
+      </button>
+    </div>
+  );
+}
+
 // ── Answer card ───────────────────────────────────────────────────────────────
 function AnswerCard({ qna }: { qna: QnA }) {
   const [copied, setCopied] = useState(false);
+  const [feedbackBusy, setFeedbackBusy] = useState(false);
+  const [feedbackNotice, setFeedbackNotice] = useState<string | null>(null);
   const copy = () => {
     navigator.clipboard.writeText(qna.answer);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const sendFeedback = async (rating: AnswerFeedbackRating) => {
+    setFeedbackBusy(true);
+    setFeedbackNotice(null);
+    try {
+      await submitAnswerFeedback({
+        qnaId: qna.id,
+        question: qna.question,
+        answer: qna.answer,
+        source: qna.source || "unknown",
+        rating,
+      });
+      setFeedbackNotice("Feedback saved.");
+    } catch {
+      setFeedbackNotice("Could not save feedback.");
+    } finally {
+      setFeedbackBusy(false);
+    }
+  };
+
   return (
     <div className="rounded-xl border border-neural-border bg-neural-surface p-4 animate-fade-in">
       <div className="flex items-start justify-between gap-2 mb-3">
@@ -170,6 +241,32 @@ function AnswerCard({ qna }: { qna: QnA }) {
           <span className="ml-2 text-neural-muted">({qna.source})</span>
         </p>
         <p className="text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">{qna.answer}</p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-neural-muted">Was this helpful?</span>
+          <button
+            type="button"
+            disabled={feedbackBusy}
+            aria-label="This answer was helpful"
+            onClick={() => void sendFeedback("up")}
+            className="inline-flex items-center gap-1 rounded-lg border border-neural-border px-2 py-1 text-xs text-neural-muted hover:text-neural-green hover:border-neural-green/40 disabled:opacity-50"
+          >
+            <ThumbsUp className="w-3.5 h-3.5" /> Helpful
+          </button>
+          <button
+            type="button"
+            disabled={feedbackBusy}
+            aria-label="This answer was not helpful"
+            onClick={() => void sendFeedback("down")}
+            className="inline-flex items-center gap-1 rounded-lg border border-neural-border px-2 py-1 text-xs text-neural-muted hover:text-red-300 hover:border-red-400/40 disabled:opacity-50"
+          >
+            <ThumbsDown className="w-3.5 h-3.5" /> Not helpful
+          </button>
+        </div>
+        {feedbackNotice && (
+          <p role="status" className="mt-2 text-xs text-neural-green">
+            {feedbackNotice}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -190,6 +287,8 @@ export default function SessionPage() {
   const [subscriptionLoading, setSubscriptionLoading] = useState(true);
   const [upgrading, setUpgrading] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
+  const [demoFromUrl, setDemoFromUrl] = useState(false);
+  const demoDraftAppliedRef = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -203,6 +302,19 @@ export default function SessionPage() {
       setSubscriptionLoading(false);
     }
   }, []);
+
+  const handleUpgradePro = useCallback(async () => {
+    setUiError("");
+    setUpgrading(true);
+    try {
+      await upgradeToPro();
+      await refreshSubscription();
+    } catch (err) {
+      setUiError(toUserMessage(err, "Could not upgrade plan right now."));
+    } finally {
+      setUpgrading(false);
+    }
+  }, [refreshSubscription]);
 
   const handleQuestion = useCallback(async (question: string) => {
     const cleanedQuestion = question.trim();
@@ -251,6 +363,17 @@ export default function SessionPage() {
     void refreshSubscription();
   }, [refreshSubscription]);
 
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("demo");
+    setDemoFromUrl(q === "1" || q === "true");
+  }, []);
+
+  useEffect(() => {
+    if (!sessionStarted || !demoFromUrl || qnas.length > 0 || demoDraftAppliedRef.current) return;
+    demoDraftAppliedRef.current = true;
+    setDraftQuestion(DEMO_SAMPLE_QUESTION);
+  }, [sessionStarted, demoFromUrl, qnas.length]);
+
   // Persist session summary to localStorage when user asks questions
   useEffect(() => {
     if (qnas.length === 0) return;
@@ -295,6 +418,12 @@ export default function SessionPage() {
     void handleQuestion(draftQuestion);
   }, [draftQuestion, handleQuestion]);
 
+  const urgentRemaining =
+    subscription?.plan === "free" && typeof subscription.remaining === "number" && subscription.remaining <= 3
+      ? subscription.remaining
+      : null;
+  const freeQuotaUrgent = urgentRemaining !== null;
+
   const exportTranscript = useCallback(() => {
     if (!qnas.length) return;
     const data = qnas
@@ -337,6 +466,13 @@ export default function SessionPage() {
           </div>
 
           <div className="space-y-5 rounded-2xl border border-neural-border bg-neural-surface p-8">
+            {!subscriptionLoading && freeQuotaUrgent && urgentRemaining !== null && (
+              <QuotaUrgencyBanner
+                remaining={urgentRemaining}
+                upgrading={upgrading}
+                onUpgrade={handleUpgradePro}
+              />
+            )}
             {!subscriptionLoading && subscription && (
               <div className="rounded-xl border border-neural-border bg-neural-bg p-3 text-xs text-neural-muted">
                 Plan: <span className="text-white font-semibold capitalize">{subscription.plan}</span>
@@ -408,20 +544,10 @@ export default function SessionPage() {
               className="w-full py-4 rounded-xl bg-neural-cyan text-black font-bold hover:bg-cyan-300 transition-colors flex items-center justify-center gap-2 text-lg">
               <Mic className="w-5 h-5" /> Start Session
             </button>
-            {subscription?.plan === "free" && (
+            {subscription?.plan === "free" && !freeQuotaUrgent && (
               <button
-                onClick={async () => {
-                  setUiError("");
-                  setUpgrading(true);
-                  try {
-                    await upgradeToPro();
-                    await refreshSubscription();
-                  } catch (err) {
-                    setUiError(toUserMessage(err, "Could not upgrade plan right now."));
-                  } finally {
-                    setUpgrading(false);
-                  }
-                }}
+                type="button"
+                onClick={() => void handleUpgradePro()}
                 disabled={upgrading}
                 className="w-full py-3 rounded-xl border border-neural-cyan/40 text-neural-cyan font-semibold hover:bg-neural-cyan/10 transition-colors disabled:opacity-50 inline-flex items-center justify-center gap-2"
               >
@@ -484,6 +610,18 @@ export default function SessionPage() {
         </div>
       </header>
 
+      {freeQuotaUrgent && urgentRemaining !== null && (
+        <div className="border-b border-neural-border bg-neural-bg px-4 py-3">
+          <div className="max-w-4xl mx-auto">
+            <QuotaUrgencyBanner
+              remaining={urgentRemaining}
+              upgrading={upgrading}
+              onUpgrade={handleUpgradePro}
+            />
+          </div>
+        </div>
+      )}
+
       {subscription && (
         <div className="border-b border-neural-border bg-neural-surface/60 px-4 py-2">
           <div className="max-w-4xl mx-auto flex items-center justify-between text-xs text-neural-muted">
@@ -495,20 +633,10 @@ export default function SessionPage() {
                 {subscription.remaining === "unlimited" ? "unlimited" : subscription.remaining}
               </span>
             </span>
-            {subscription.plan === "free" && (
+            {subscription.plan === "free" && !freeQuotaUrgent && (
               <button
-                onClick={async () => {
-                  setUiError("");
-                  setUpgrading(true);
-                  try {
-                    await upgradeToPro();
-                    await refreshSubscription();
-                  } catch (err) {
-                    setUiError(toUserMessage(err, "Could not upgrade plan right now."));
-                  } finally {
-                    setUpgrading(false);
-                  }
-                }}
+                type="button"
+                onClick={() => void handleUpgradePro()}
                 disabled={upgrading}
                 className="text-neural-cyan hover:text-cyan-300 disabled:opacity-50 inline-flex items-center gap-1"
               >

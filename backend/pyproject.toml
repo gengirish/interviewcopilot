@@ -1,0 +1,16 @@
+[project]
+name = "infinityhire-backend"
+version = "0.1.0"
+description = "Future FastAPI backend for InfinityHire Copilot"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn>=0.30.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

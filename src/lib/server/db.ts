@@ -59,6 +59,26 @@ export async function ensureSchema(): Promise<void> {
         CREATE INDEX IF NOT EXISTS idx_interview_events_user_created
         ON interview_events (user_id, created_at DESC);
       `);
+
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS interview_answer_feedback (
+          id BIGSERIAL PRIMARY KEY,
+          user_id UUID NOT NULL REFERENCES interview_users(id) ON DELETE CASCADE,
+          month_key TEXT NOT NULL,
+          qna_id TEXT NOT NULL,
+          question TEXT NOT NULL,
+          answer TEXT NOT NULL,
+          source TEXT NOT NULL,
+          rating TEXT NOT NULL CHECK (rating IN ('up', 'down')),
+          reason TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_answer_feedback_user_month
+        ON interview_answer_feedback (user_id, month_key);
+      `);
     } finally {
       client.release();
     }

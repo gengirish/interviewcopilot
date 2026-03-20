@@ -53,6 +53,76 @@ function checkRateLimit(key: string): boolean {
   return true;
 }
 
+function extractQuestionKeywords(question: string): string[] {
+  const stopwords = new Set([
+    "the",
+    "and",
+    "for",
+    "with",
+    "that",
+    "this",
+    "from",
+    "have",
+    "what",
+    "how",
+    "when",
+    "where",
+    "why",
+    "would",
+    "should",
+    "could",
+    "about",
+    "into",
+    "your",
+    "you",
+    "are",
+    "was",
+    "were",
+    "can",
+    "tell",
+    "explain",
+    "describe",
+    "give",
+    "between",
+  ]);
+
+  const words = question
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length >= 4 && !stopwords.has(w));
+
+  return Array.from(new Set(words)).slice(0, 4);
+}
+
+function buildQuestionAwareFallback(question: string, roleLabel: string, isStarQuestion: boolean): string {
+  const keywords = extractQuestionKeywords(question);
+  const focus = keywords.length ? keywords.join(", ") : "the core trade-offs and practical implementation details";
+
+  if (isStarQuestion) {
+    return `For "${question}", I would answer in STAR format tailored to a ${roleLabel} context.
+
+Situation: In a recent project, we had a high-impact problem related to ${focus}, under tight delivery constraints.
+
+Task: I owned the outcome end-to-end: define a reliable approach, align stakeholders, and deliver measurable impact.
+
+Action: I clarified requirements, broke the work into milestones, implemented the highest-risk pieces first, and added monitoring so we could validate outcomes quickly and de-risk rollout.
+
+Result: We shipped on schedule, improved reliability and performance, and created a repeatable approach the team could scale.
+
+If useful, I can now give a shorter 30-second version for live interview delivery.`;
+  }
+
+  return `For "${question}", my approach as a ${roleLabel} is:
+
+1) Clarify constraints: define scale, latency, reliability, and cost requirements specific to ${focus}.
+2) Evaluate options: compare 2-3 approaches with explicit trade-offs, then choose the one with best long-term operability.
+3) Implement safely: ship incrementally with tests, observability, and rollback controls.
+4) Validate impact: track technical and business metrics, then iterate based on production feedback.
+
+In interviews, I usually anchor this with one concrete project example so the answer is practical, not theoretical.`;
+}
+
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   try {
@@ -135,32 +205,7 @@ Rules:
 
 Interview question: "${normalizedQuestion}"`;
 
-  // 1. Try Gemini 2.0 Flash (primary — free tier)
-  if (geminiKey) {
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ contents: [{ parts: [{ text: fullPrompt }] }] }),
-        }
-      );
-      if (res.ok) {
-        const data = await withTimeout(res.json(), 10_000);
-        const answer = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (answer) {
-          await incrementUsage(user.id);
-          if (usageBefore === 0) {
-            await trackEvent(user.id, "first_question_asked", { source: "api" });
-          }
-          return NextResponse.json({ answer, source: "gemini" });
-        }
-      }
-    } catch {}
-  }
-
-  // 2. Fallback: OpenRouter (claude-3-haiku)
+  // 1. Try OpenRouter first (primary provider)
   if (openrouterKey) {
     try {
       const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -192,23 +237,37 @@ Interview question: "${normalizedQuestion}"`;
     } catch {}
   }
 
+  // 2. Fallback: Gemini 2.0 Flash
+  if (geminiKey) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents: [{ parts: [{ text: fullPrompt }] }] }),
+        }
+      );
+      if (res.ok) {
+        const data = await withTimeout(res.json(), 10_000);
+        const answer = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (answer) {
+          await incrementUsage(user.id);
+          if (usageBefore === 0) {
+            await trackEvent(user.id, "first_question_asked", { source: "api" });
+          }
+          return NextResponse.json({ answer, source: "gemini" });
+        }
+      }
+    } catch {}
+  }
+
   // 3. Static fallback — at least make it question-aware
   const roleLabel = (normalizedRole || "engineer").replace(/-/g, " ");
   const isStarQuestion = /tell me about|give me an example|describe a time|when did you/i.test(
     normalizedQuestion
   );
-  const isTechnicalQuestion = /how does|what is|explain|difference between|why do/i.test(
-    normalizedQuestion
-  );
-
-  let answer = "";
-  if (isStarQuestion) {
-    answer = `As a ${roleLabel}, I faced a similar situation in a recent project.\n\n**Situation:** Our team needed to deliver a critical feature under a tight deadline with limited resources.\n\n**Task:** I was responsible for leading the design and implementation end-to-end.\n\n**Action:** I broke the problem into smaller milestones, prioritised the highest-impact components, and coordinated closely with cross-functional stakeholders to unblock dependencies quickly.\n\n**Result:** We shipped on time, reduced technical debt by 30%, and the solution has been running in production with zero incidents for 6 months.\n\nI'd be happy to dive deeper into any specific aspect of this experience.`;
-  } else if (isTechnicalQuestion) {
-    answer = `Great technical question. As a ${roleLabel}, this is something I work with regularly.\n\nThe core concept here involves understanding the trade-offs between different approaches. In my experience, the most effective solution depends on your specific constraints — scale, latency requirements, and team familiarity with the technology.\n\nI'd approach this by first defining the requirements clearly, then evaluating 2-3 options against those criteria, and finally implementing with proper testing and monitoring in place.\n\nFor a concrete example from my work: we faced a similar decision and chose the approach that balanced developer productivity with production reliability — which paid off significantly in the long run.`;
-  } else {
-    answer = `As a ${roleLabel}, I approach this by focusing on first principles and clear communication with stakeholders.\n\nIn my experience, the key is to break complex problems into manageable pieces, align with the team on priorities, and iterate quickly based on feedback.\n\nI've consistently found that combining technical rigour with strong collaboration leads to the best outcomes — and that's the approach I'd bring to this role.`;
-  }
+  const answer = buildQuestionAwareFallback(normalizedQuestion, roleLabel, isStarQuestion);
 
   await incrementUsage(user.id);
   if (usageBefore === 0) {

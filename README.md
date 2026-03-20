@@ -2,6 +2,19 @@
 
 AI interview intelligence platform built with Next.js 14.
 
+## SFMS-style Structure Alignment
+
+This repo has been aligned to SFMS top-level structure conventions by adding:
+
+- `.config/` for environment and structural config templates
+- `backend/` scaffold for future FastAPI split
+- `db/` for SQL schema/seed source files
+- `docker/` for local infrastructure compose files
+- `docs/` for architecture and migration notes
+- `frontend/` placeholder for eventual frontend relocation
+
+Current active app runtime remains the root Next.js project (`src/` + root `package.json`) to avoid deployment regressions.
+
 ## Product Direction
 
 This project follows production patterns inspired by `interview-with-giri/.cursor`:
