@@ -24,6 +24,7 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm run lint
+      - run: npm run build
 
   e2e:
     runs-on: ubuntu-latest
@@ -35,6 +36,7 @@ jobs:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       GOOGLE_AI_KEY: ${{ secrets.GOOGLE_AI_KEY }}
       CI: true
+      ALLOW_MOCK_UPGRADE: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -43,7 +45,7 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
+      - run: npm run test:e2e:ci
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4

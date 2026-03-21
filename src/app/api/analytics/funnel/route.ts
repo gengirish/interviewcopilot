@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromRequest } from "@/lib/server/auth";
+import { isAnalyticsFunnelAdmin } from "@/lib/server/analytics-admin";
 import { getActivationSummary, getFunnelAggregate } from "@/lib/server/event-store";
 import type { AnalyticsFunnelResponse } from "@/lib/types";
 
@@ -13,6 +14,9 @@ export async function GET(req: NextRequest) {
   const user = await getUserFromRequest(req);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!isAnalyticsFunnelAdmin(user.email)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const windowDays = parseWindowDays(req);

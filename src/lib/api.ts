@@ -125,11 +125,35 @@ export async function getCurrentUser(): Promise<CurrentUserResponse["user"]> {
   return data.user;
 }
 
-export async function trackEvent(eventType: "session_started" | "first_question_asked" | "upgraded_to_pro") {
+export type ClientAnalyticsEventType =
+  | "session_started"
+  | "first_question_asked"
+  | "upgraded_to_pro"
+  | "onboarding_started"
+  | "onboarding_step_completed"
+  | "onboarding_dismissed"
+  | "sample_question_used";
+
+export type ClientAnalyticsMetadata = Record<string, string | number | boolean | null>;
+
+export async function trackEvent(
+  eventType: ClientAnalyticsEventType,
+  options?: { metadata?: ClientAnalyticsMetadata },
+) {
+  const payload: Record<string, unknown> = { eventType, source: "client" };
+  if (options?.metadata) {
+    const cleaned: Record<string, string | number | boolean> = {};
+    for (const [k, v] of Object.entries(options.metadata)) {
+      if (v !== null && v !== undefined) cleaned[k] = v;
+    }
+    if (Object.keys(cleaned).length > 0) payload.metadata = cleaned;
+  }
+
   const res = await fetch("/api/events", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ eventType, source: "client" }),
+    credentials: "include",
+    body: JSON.stringify(payload),
   });
   if (!res.ok && res.status !== 401) {
     throw new ApiError(res.status, "Failed to track event");

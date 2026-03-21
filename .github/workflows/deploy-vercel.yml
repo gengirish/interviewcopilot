@@ -1,20 +1,33 @@
 name: Deploy Vercel
 
+# Production deploy after CI succeeds on main, with optional manual dispatch.
 on:
   workflow_dispatch:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
+
+concurrency:
+  group: vercel-production
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.head_branch == 'main')
     env:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -26,4 +39,27 @@ jobs:
       - name: Build deployment artifact
         run: vercel build --prod --token="$VERCEL_TOKEN"
       - name: Deploy prebuilt artifact
-        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+        id: vercel_deploy
+        run: |
+          set -euo pipefail
+          LOG=$(mktemp)
+          vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN" 2>&1 | tee "$LOG"
+          URL=$(grep -oE 'https://[^[:space:]]+' "$LOG" | grep -E '\.vercel\.app|\.now\.sh' | tail -1 || true)
+          if [ -z "${URL:-}" ]; then
+            URL=$(grep -oE 'https://[^[:space:]]+' "$LOG" | tail -1)
+          fi
+          if [ -z "${URL:-}" ]; then
+            echo "::error::Could not parse deployment URL from vercel deploy output."
+            exit 1
+          fi
+          URL="${URL%/}"
+          echo "deploy_url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Deployed to $URL"
+      - name: Post-deploy smoke (health + homepage)
+        env:
+          BASE: ${{ steps.vercel_deploy.outputs.deploy_url }}
+        run: |
+          set -euo pipefail
+          curl_opts=( -fsS --connect-timeout 15 --max-time 60 --retry 8 --retry-delay 5 --retry-all-errors )
+          curl "${curl_opts[@]}" "$BASE/api/health" | grep -qE '"status"[[:space:]]*:[[:space:]]*"healthy"'
+          curl "${curl_opts[@]}" -o /dev/null "$BASE/"

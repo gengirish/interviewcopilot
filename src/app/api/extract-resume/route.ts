@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getUserFromRequest } from "@/lib/server/auth";
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 const SUPPORTED_TYPES = new Set(["text/plain", "application/pdf"]);
 
 export async function POST(req: NextRequest) {
+  const user = await getUserFromRequest(req);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;

@@ -60,6 +60,8 @@ Open `http://localhost:3004`.
 
 ## Quality Checks
 
+Step-by-step release process, CI vs local checks, Vercel deploy, smoke tests, and rollback: [`docs/release-runbook.md`](docs/release-runbook.md).
+
 ```bash
 npm run lint
 npm run build
@@ -67,7 +69,18 @@ npx tsc --noEmit
 npm run test:e2e
 ```
 
+## Test Accounts and QA
+
+- Local test account setup and manual QA checklist: `docs/test-accounts-and-qa.md`
+- Seed database for local auth/quota tests:
+
+```bash
+npm run db:seed
+```
+
 ## Deployment
+
+Operational runbook (secrets, gates, Actions deploy, smoke, rollback): [`docs/release-runbook.md`](docs/release-runbook.md).
 
 This repository includes GitHub Actions for CI and Vercel deploy:
 

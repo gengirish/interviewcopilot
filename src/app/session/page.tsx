@@ -19,6 +19,8 @@ import {
   Crown,
   ThumbsUp,
   ThumbsDown,
+  ListChecks,
+  Sparkles,
 } from "lucide-react";
 import {
   extractResume,
@@ -32,6 +34,8 @@ import {
 import type { AnswerFeedbackRating, QnA, Role, SessionSummary } from "@/lib/types";
 import { SESSIONS_STORAGE_KEY } from "@/lib/types";
 import type { SubscriptionOverview } from "@/lib/api";
+
+const ONBOARDING_DISMISSED_KEY = "ihc_session_onboarding_checklist_v1";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 const ROLES: { value: Role; label: string; emoji: string }[] = [
@@ -289,6 +293,16 @@ export default function SessionPage() {
   const [sessionStarted, setSessionStarted] = useState(false);
   const [demoFromUrl, setDemoFromUrl] = useState(false);
   const demoDraftAppliedRef = useRef(false);
+  const [onboardingStorageReady, setOnboardingStorageReady] = useState(false);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const [resumeSkipped, setResumeSkipped] = useState(false);
+  const [pendingSampleQuestion, setPendingSampleQuestion] = useState<string | null>(null);
+  const [roleStepDoneUi, setRoleStepDoneUi] = useState(false);
+  const [samplePreparedUi, setSamplePreparedUi] = useState(false);
+  const onboardingStartedSentRef = useRef(false);
+  const stepChooseRoleSentRef = useRef(false);
+  const stepResumeSentRef = useRef(false);
+  const stepTryQuestionSentRef = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -369,10 +383,45 @@ export default function SessionPage() {
   }, []);
 
   useEffect(() => {
-    if (!sessionStarted || !demoFromUrl || qnas.length > 0 || demoDraftAppliedRef.current) return;
-    demoDraftAppliedRef.current = true;
-    setDraftQuestion(DEMO_SAMPLE_QUESTION);
-  }, [sessionStarted, demoFromUrl, qnas.length]);
+    try {
+      setOnboardingDismissed(localStorage.getItem(ONBOARDING_DISMISSED_KEY) === "1");
+    } catch {
+      setOnboardingDismissed(false);
+    }
+    setOnboardingStorageReady(true);
+  }, []);
+
+  const onboardingChecklistVisible =
+    onboardingStorageReady && !onboardingDismissed && !sessionStarted;
+
+  useEffect(() => {
+    if (!onboardingChecklistVisible) return;
+    if (onboardingStartedSentRef.current) return;
+    onboardingStartedSentRef.current = true;
+    void trackEvent("onboarding_started");
+  }, [onboardingChecklistVisible]);
+
+  useEffect(() => {
+    if (!onboardingChecklistVisible) return;
+    if (stepResumeSentRef.current) return;
+    if (!resumeText.trim() && !resumeName) return;
+    stepResumeSentRef.current = true;
+    void trackEvent("onboarding_step_completed", { metadata: { step: "resume", via: "added" } });
+  }, [onboardingChecklistVisible, resumeText, resumeName]);
+
+  useEffect(() => {
+    if (!sessionStarted || qnas.length > 0) return;
+    if (demoFromUrl && !demoDraftAppliedRef.current) {
+      demoDraftAppliedRef.current = true;
+      setDraftQuestion(DEMO_SAMPLE_QUESTION);
+      setPendingSampleQuestion(null);
+      return;
+    }
+    if (pendingSampleQuestion) {
+      setDraftQuestion(pendingSampleQuestion);
+      setPendingSampleQuestion(null);
+    }
+  }, [sessionStarted, demoFromUrl, qnas.length, pendingSampleQuestion]);
 
   // Persist session summary to localStorage when user asks questions
   useEffect(() => {
@@ -417,6 +466,56 @@ export default function SessionPage() {
   const submitTypedQuestion = useCallback(() => {
     void handleQuestion(draftQuestion);
   }, [draftQuestion, handleQuestion]);
+
+  const fireImplicitOnboardingForSessionStart = useCallback(() => {
+    if (!onboardingStartedSentRef.current) return;
+    if (!stepChooseRoleSentRef.current) {
+      stepChooseRoleSentRef.current = true;
+      void trackEvent("onboarding_step_completed", { metadata: { step: "choose_role", implicit: true } });
+    }
+    if (!stepResumeSentRef.current) {
+      stepResumeSentRef.current = true;
+      const skipped = !resumeText.trim() && !resumeName && !resumeSkipped;
+      void trackEvent("onboarding_step_completed", {
+        metadata: { step: "resume", implicit: true, skipped },
+      });
+    }
+    if (!stepTryQuestionSentRef.current) {
+      stepTryQuestionSentRef.current = true;
+      void trackEvent("onboarding_step_completed", { metadata: { step: "try_question", via: "start_session" } });
+    }
+  }, [resumeText, resumeName, resumeSkipped]);
+
+  const handleUseSampleQuestion = useCallback(() => {
+    const q = QUICK_QUESTIONS[role][0];
+    if (!q) return;
+    setPendingSampleQuestion(q);
+    setSamplePreparedUi(true);
+    void trackEvent("sample_question_used", { metadata: { role } });
+    if (onboardingStartedSentRef.current && !stepTryQuestionSentRef.current) {
+      stepTryQuestionSentRef.current = true;
+      void trackEvent("onboarding_step_completed", { metadata: { step: "try_question", via: "sample" } });
+    }
+  }, [role]);
+
+  const dismissOnboardingChecklist = useCallback(() => {
+    try {
+      localStorage.setItem(ONBOARDING_DISMISSED_KEY, "1");
+    } catch {
+      /* ignore */
+    }
+    setOnboardingDismissed(true);
+    void trackEvent("onboarding_dismissed");
+  }, []);
+
+  const skipResumeStep = useCallback(() => {
+    setResumeSkipped(true);
+    if (!onboardingChecklistVisible) return;
+    if (!stepResumeSentRef.current) {
+      stepResumeSentRef.current = true;
+      void trackEvent("onboarding_step_completed", { metadata: { step: "resume", via: "skipped" } });
+    }
+  }, [onboardingChecklistVisible]);
 
   const urgentRemaining =
     subscription?.plan === "free" && typeof subscription.remaining === "number" && subscription.remaining <= 3
@@ -483,12 +582,144 @@ export default function SessionPage() {
                 </span>
               </div>
             )}
+
+            {onboardingChecklistVisible && (
+              <div
+                role="region"
+                aria-label="First session checklist"
+                className="rounded-xl border border-neural-cyan/25 bg-neural-bg/90 p-4 space-y-3"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <ListChecks className="w-5 h-5 text-neural-cyan shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-semibold text-white">First session checklist</p>
+                      <p className="text-xs text-neural-muted mt-0.5 leading-relaxed">
+                        Three quick steps, then you&apos;re live in the interview.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void dismissOnboardingChecklist()}
+                    className="text-xs text-neural-muted hover:text-white whitespace-nowrap shrink-0"
+                  >
+                    Don&apos;t show again
+                  </button>
+                </div>
+                <ol className="space-y-2.5 text-sm text-slate-200 list-none pl-0">
+                  <li className="flex gap-2.5 items-start">
+                    <span
+                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${
+                        roleStepDoneUi
+                          ? "border-neural-green/50 bg-neural-green/15 text-neural-green"
+                          : "border-neural-border text-neural-muted"
+                      }`}
+                      aria-hidden
+                    >
+                      {roleStepDoneUi ? <Check className="w-3 h-3" strokeWidth={3} /> : "1"}
+                    </span>
+                    <span>
+                      <span className="text-white font-medium">Choose your role</span>
+                      <span className="text-neural-muted text-xs block mt-0.5">Use the dropdown below.</span>
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5 items-start">
+                    <span
+                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${
+                        resumeSkipped || resumeText.trim() || resumeName
+                          ? "border-neural-green/50 bg-neural-green/15 text-neural-green"
+                          : "border-neural-border text-neural-muted"
+                      }`}
+                      aria-hidden
+                    >
+                      {resumeSkipped || resumeText.trim() || resumeName ? (
+                        <Check className="w-3 h-3" strokeWidth={3} />
+                      ) : (
+                        "2"
+                      )}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="text-white font-medium">Add resume</span>
+                      <span className="text-neural-muted text-xs block mt-0.5">
+                        Optional — improves answer quality.{" "}
+                        <button
+                          type="button"
+                          onClick={() => void skipResumeStep()}
+                          className="text-neural-cyan hover:text-cyan-300 underline-offset-2 hover:underline"
+                        >
+                          Skip
+                        </button>
+                      </span>
+                    </span>
+                  </li>
+                  <li className="flex gap-2.5 items-start">
+                    <span
+                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${
+                        samplePreparedUi
+                          ? "border-neural-green/50 bg-neural-green/15 text-neural-green"
+                          : "border-neural-border text-neural-muted"
+                      }`}
+                      aria-hidden
+                    >
+                      {samplePreparedUi ? <Check className="w-3 h-3" strokeWidth={3} /> : "3"}
+                    </span>
+                    <span className="flex-1 min-w-0 space-y-2">
+                      <span className="text-white font-medium">Try a sample question or start</span>
+                      <span className="text-neural-muted text-xs block">
+                        We&apos;ll pre-fill your draft; press Ask after the session opens.
+                      </span>
+                      <button
+                        type="button"
+                        data-testid="onboarding-use-sample-question"
+                        onClick={() => void handleUseSampleQuestion()}
+                        className="inline-flex items-center gap-2 rounded-lg border border-neural-cyan/40 bg-neural-cyan/10 px-3 py-2 text-xs font-semibold text-neural-cyan hover:bg-neural-cyan/15 transition-colors"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Use sample question
+                      </button>
+                    </span>
+                  </li>
+                </ol>
+              </div>
+            )}
+
+            {onboardingStorageReady && !onboardingChecklistVisible && (
+              <div className="flex flex-wrap justify-center gap-2">
+                <button
+                  type="button"
+                  data-testid="session-use-sample-question"
+                  onClick={() => void handleUseSampleQuestion()}
+                  className="inline-flex items-center gap-2 rounded-lg border border-neural-border px-3 py-2 text-xs font-medium text-neural-muted hover:text-white hover:border-neural-cyan/40 transition-colors"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-neural-cyan" />
+                  Use sample question
+                </button>
+              </div>
+            )}
+
             {/* Role selector */}
             <div>
               <label className="block text-sm font-medium text-neural-muted mb-2">Your role</label>
               <div className="relative">
-                <select value={role} onChange={(e) => setRole(e.target.value as Role)}
-                  className="w-full px-4 py-3 rounded-lg border border-neural-border bg-neural-bg text-white text-sm focus:outline-none focus:border-neural-cyan/50 appearance-none cursor-pointer">
+                <select
+                  value={role}
+                  onFocus={() => {
+                    if (onboardingChecklistVisible) setRoleStepDoneUi(true);
+                  }}
+                  onChange={(e) => {
+                    const v = e.target.value as Role;
+                    setRole(v);
+                    setRoleStepDoneUi(true);
+                    if (onboardingChecklistVisible && !stepChooseRoleSentRef.current) {
+                      stepChooseRoleSentRef.current = true;
+                      void trackEvent("onboarding_step_completed", {
+                        metadata: { step: "choose_role", via: "change" },
+                      });
+                    }
+                  }}
+                  className="w-full px-4 py-3 rounded-lg border border-neural-border bg-neural-bg text-white text-sm focus:outline-none focus:border-neural-cyan/50 appearance-none cursor-pointer"
+                >
                   {ROLES.map((r) => (
                     <option key={r.value} value={r.value}>{r.emoji} {r.label}</option>
                   ))}
@@ -536,12 +767,14 @@ export default function SessionPage() {
 
             <button
               onClick={async () => {
+                fireImplicitOnboardingForSessionStart();
                 setSessionStarted(true);
                 try {
                   await trackEvent("session_started");
                 } catch {}
               }}
-              className="w-full py-4 rounded-xl bg-neural-cyan text-black font-bold hover:bg-cyan-300 transition-colors flex items-center justify-center gap-2 text-lg">
+              className="w-full py-4 rounded-xl bg-neural-cyan text-black font-bold hover:bg-cyan-300 transition-colors flex items-center justify-center gap-2 text-lg"
+            >
               <Mic className="w-5 h-5" /> Start Session
             </button>
             {subscription?.plan === "free" && !freeQuotaUrgent && (

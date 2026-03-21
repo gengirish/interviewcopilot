@@ -6,7 +6,11 @@ export type EventType =
   | "login_completed"
   | "session_started"
   | "first_question_asked"
-  | "upgraded_to_pro";
+  | "upgraded_to_pro"
+  | "onboarding_started"
+  | "onboarding_step_completed"
+  | "onboarding_dismissed"
+  | "sample_question_used";
 
 export interface ActivationSummary {
   score: number;
