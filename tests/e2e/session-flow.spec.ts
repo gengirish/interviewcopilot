@@ -103,7 +103,7 @@ test.describe("Session flow", () => {
     const email = `e2e+freecta-${Date.now()}-${testInfo.workerIndex}@example.com`;
     await signupAndLogin(page, email);
 
-    await expect(page.getByRole("button", { name: /upgrade to pro \(mock\)/i })).toBeVisible({
+    await expect(page.getByRole("button", { name: /secure checkout/i })).toBeVisible({
       timeout: 20_000,
     });
 

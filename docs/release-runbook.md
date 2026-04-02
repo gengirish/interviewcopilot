@@ -12,6 +12,7 @@ Concise checklist for promoting InfinityHire Copilot to production via GitHub Ac
 |--------|---------|
 | `AUTH_SECRET` | CI (e2e), runtime auth |
 | `DATABASE_URL` | CI (e2e), production DB |
+| `DATABASE_CA_CERT` | Optional CA bundle for strict DB TLS verification in production |
 | `OPENROUTER_API_KEY` | CI (optional in app; static fallback exists) |
 | `GOOGLE_AI_KEY` | CI (optional) |
 | `VERCEL_TOKEN` | Deploy workflow |
@@ -19,6 +20,8 @@ Concise checklist for promoting InfinityHire Copilot to production via GitHub Ac
 | `VERCEL_PROJECT_ID` | Deploy workflow |
 
 **Local parity:** `.env.local` for dev is documented in the root `README.md`. Never commit `.env` files.
+
+**DB TLS hardening:** Production DB connections now verify certificates by default. Use `DATABASE_CA_CERT` for private CA providers. `DATABASE_SSL_ALLOW_INSECURE=true` is emergency-only and must be disabled after incident recovery.
 
 ## Required checks
 

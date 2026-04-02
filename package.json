@@ -10,6 +10,7 @@
     "db:seed": "node scripts/db-seed.cjs",
     "test:e2e": "playwright test",
     "test:e2e:ci": "playwright test --config=playwright.ci.config.ts",
+    "test:e2e:hardening": "playwright test --config=playwright.hardening.config.ts",
     "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
@@ -20,7 +21,8 @@
     "pdf-parse": "^1.1.1",
     "pg": "^8.20.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "stripe": "^20.4.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",

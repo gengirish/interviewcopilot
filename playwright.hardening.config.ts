@@ -4,11 +4,15 @@ const port = 3004;
 const baseURL = `http://127.0.0.1:${port}`;
 
 /**
- * CI / production-like E2E: Next.js production build + `next start` (not dev server).
+ * Production server (`next start`) with mock billing upgrade forced off.
+ * Run: `npm run test:e2e:hardening`
+ *
+ * Kept separate from `playwright.ci.config.ts` because CI enables ALLOW_MOCK_UPGRADE
+ * for dashboard upgrade flows.
  */
 export default defineConfig({
   testDir: "./tests/e2e",
-  testIgnore: ["**/security-hardening.spec.ts"],
+  testMatch: /security-hardening\.spec\.ts/,
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -24,5 +28,10 @@ export default defineConfig({
     url: baseURL,
     reuseExistingServer: false,
     timeout: 600_000,
+    env: {
+      ...process.env,
+      // Override job-level CI env so production mock upgrade stays disabled.
+      ALLOW_MOCK_UPGRADE: "",
+    },
   },
 });

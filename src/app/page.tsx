@@ -198,12 +198,12 @@ function Pricing() {
   const tiers = [
     {
       name:"Free", price:"₹0", period:"forever", highlight:false,
-      features:["3 sessions/month","5 minutes per session","Basic answer mode","Text answers only"],
+      features:["30 answers/month","Role-specific answer modes","Resume-aware context","Text and voice question input"],
       cta:"Start Free", href:"/session",
     },
     {
       name:"Pro", price:"₹499", period:"/month", highlight:true,
-      features:["Unlimited sessions","Unlimited duration","All 6 role modes","Resume-aware answers","STAR format","Session history & export","Priority AI (Claude Sonnet)"],
+      features:["Unlimited answers","All 6 role modes","Resume-aware answers","STAR format","Session history & export","Priority AI routing","Faster support"],
       cta:"Upgrade to Pro", href:"/dashboard",
     },
     {

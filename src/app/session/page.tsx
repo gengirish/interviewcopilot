@@ -21,9 +21,11 @@ import {
   ThumbsDown,
   ListChecks,
   Sparkles,
+  ClipboardList,
 } from "lucide-react";
 import {
   extractResume,
+  generateSessionDebrief,
   getAnswer,
   getSubscription,
   submitAnswerFeedback,
@@ -31,7 +33,14 @@ import {
   trackEvent,
   upgradeToPro,
 } from "@/lib/api";
-import type { AnswerFeedbackRating, QnA, Role, SessionSummary } from "@/lib/types";
+import type {
+  AnswerFeedbackRating,
+  CompanyMode,
+  QnA,
+  Role,
+  SessionDebrief,
+  SessionSummary,
+} from "@/lib/types";
 import { SESSIONS_STORAGE_KEY } from "@/lib/types";
 import type { SubscriptionOverview } from "@/lib/api";
 
@@ -45,6 +54,15 @@ const ROLES: { value: Role; label: string; emoji: string }[] = [
   { value: "backend", label: "Backend Engineer", emoji: "💻" },
   { value: "fullstack", label: "Full-Stack Engineer", emoji: "📱" },
   { value: "product", label: "Product Manager", emoji: "🎯" },
+];
+
+const COMPANY_OPTIONS: { value: CompanyMode; label: string }[] = [
+  { value: "generic", label: "General (default)" },
+  { value: "google", label: "Google" },
+  { value: "amazon", label: "Amazon" },
+  { value: "razorpay", label: "Razorpay" },
+  { value: "atlassian", label: "Atlassian" },
+  { value: "flipkart", label: "Flipkart" },
 ];
 
 const QUICK_QUESTIONS: Record<Role, string[]> = {
@@ -279,6 +297,7 @@ function AnswerCard({ qna }: { qna: QnA }) {
 // ── Main session page ─────────────────────────────────────────────────────────
 export default function SessionPage() {
   const [role, setRole] = useState<Role>("ml-engineer");
+  const [companyMode, setCompanyMode] = useState<CompanyMode>("generic");
   const [resumeText, setResumeText] = useState("");
   const [resumeName, setResumeName] = useState("");
   const [qnas, setQnas] = useState<QnA[]>([]);
@@ -297,6 +316,9 @@ export default function SessionPage() {
   const [onboardingDismissed, setOnboardingDismissed] = useState(false);
   const [resumeSkipped, setResumeSkipped] = useState(false);
   const [pendingSampleQuestion, setPendingSampleQuestion] = useState<string | null>(null);
+  const [debrief, setDebrief] = useState<SessionDebrief | null>(null);
+  const [debriefLoading, setDebriefLoading] = useState(false);
+  const [debriefError, setDebriefError] = useState("");
   const [roleStepDoneUi, setRoleStepDoneUi] = useState(false);
   const [samplePreparedUi, setSamplePreparedUi] = useState(false);
   const onboardingStartedSentRef = useRef(false);
@@ -338,7 +360,12 @@ export default function SessionPage() {
     setCurrentQuestion(cleanedQuestion);
     setLoading(true);
     try {
-      const { answer, source } = await getAnswer({ question: cleanedQuestion, role, resumeText });
+      const { answer, source } = await getAnswer({
+        question: cleanedQuestion,
+        role,
+        resumeText,
+        ...(companyMode !== "generic" ? { companyMode } : {}),
+      });
       setQnas((prev) => [...prev, {
         id: Date.now().toString(),
         question: cleanedQuestion,
@@ -365,7 +392,7 @@ export default function SessionPage() {
       setCurrentQuestion("");
       setDraftQuestion("");
     }
-  }, [loading, refreshSubscription, role, resumeText]);
+  }, [loading, refreshSubscription, role, resumeText, companyMode]);
 
   const { isListening, transcript, start, stop } = useSpeechRecognition(handleQuestion, setSpeechError);
 
@@ -522,6 +549,36 @@ export default function SessionPage() {
       ? subscription.remaining
       : null;
   const freeQuotaUrgent = urgentRemaining !== null;
+
+  const handleGenerateDebrief = useCallback(async () => {
+    if (!qnas.length || debriefLoading) return;
+    setDebriefError("");
+    setDebriefLoading(true);
+    try {
+      const qnasPayload = qnas.map((q) => ({
+        question: q.question,
+        answer: q.answer,
+      }));
+      const result = await generateSessionDebrief({
+        qnas: qnasPayload,
+        role,
+        companyMode,
+      });
+      setDebrief(result);
+      try {
+        await trackEvent("debrief_generated", {
+          metadata: { companyMode, qnaCount: qnas.length },
+        });
+      } catch {
+        /* non-fatal */
+      }
+    } catch (err) {
+      setDebrief(null);
+      setDebriefError(toUserMessage(err, "Could not generate debrief."));
+    } finally {
+      setDebriefLoading(false);
+    }
+  }, [qnas, role, companyMode, debriefLoading]);
 
   const exportTranscript = useCallback(() => {
     if (!qnas.length) return;
@@ -728,6 +785,29 @@ export default function SessionPage() {
               </div>
             </div>
 
+            {/* Company interview mode */}
+            <div>
+              <label className="block text-sm font-medium text-neural-muted mb-2">Interview style (optional)</label>
+              <div className="relative">
+                <select
+                  data-testid="company-mode-select"
+                  value={companyMode}
+                  onChange={(e) => setCompanyMode(e.target.value as CompanyMode)}
+                  className="w-full px-4 py-3 rounded-lg border border-neural-border bg-neural-bg text-white text-sm focus:outline-none focus:border-neural-cyan/50 appearance-none cursor-pointer"
+                >
+                  {COMPANY_OPTIONS.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neural-muted pointer-events-none" />
+              </div>
+              <p className="text-xs text-neural-muted mt-1.5 leading-relaxed">
+                Tailors answer emphasis to how that company typically interviews. Default stays unchanged if you skip this.
+              </p>
+            </div>
+
             {/* Resume upload */}
             <div>
               <label className="block text-sm font-medium text-neural-muted mb-2">Resume (optional but recommended)</label>
@@ -784,7 +864,7 @@ export default function SessionPage() {
                 disabled={upgrading}
                 className="w-full py-3 rounded-xl border border-neural-cyan/40 text-neural-cyan font-semibold hover:bg-neural-cyan/10 transition-colors disabled:opacity-50 inline-flex items-center justify-center gap-2"
               >
-                <Crown className="w-4 h-4" /> {upgrading ? "Upgrading..." : "Upgrade to Pro (Mock)"}
+                <Crown className="w-4 h-4" /> {upgrading ? "Upgrading..." : "Secure checkout"}
               </button>
             )}
             {uiError && (
@@ -801,17 +881,33 @@ export default function SessionPage() {
   }
 
   const selectedRole = ROLES.find((r) => r.value === role)!;
+  const selectedCompany = COMPANY_OPTIONS.find((c) => c.value === companyMode)!;
 
   return (
     <main className="min-h-screen bg-neural-bg flex flex-col">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-neural-border bg-neural-bg/90 backdrop-blur-md px-4 py-3">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <Mic className="w-5 h-5 text-neural-cyan" />
             <span className="font-bold text-white">InfinityHire Copilot</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-neural-surface border border-neural-border text-neural-muted">
+            <span
+              data-testid="session-role-badge"
+              className="text-xs px-2 py-0.5 rounded-full bg-neural-surface border border-neural-border text-neural-muted"
+            >
               {selectedRole.emoji} {selectedRole.label}
+            </span>
+            <span
+              data-testid="session-company-bar"
+              className={`text-xs px-2 py-0.5 rounded-full border ${
+                companyMode === "generic"
+                  ? "bg-neural-surface/80 border-neural-border text-neural-muted"
+                  : "bg-neural-purple/20 border-neural-purple/40 text-neural-cyan"
+              }`}
+            >
+              {companyMode === "generic"
+                ? "General interview bar"
+                : `${selectedCompany.label} interview bar`}
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -907,6 +1003,88 @@ export default function SessionPage() {
             {uiError}
           </div>
         )}
+
+        {qnas.length > 0 && (
+          <section
+            aria-label="Session debrief"
+            className="rounded-xl border border-neural-border bg-neural-surface/80 p-4 space-y-3"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <ClipboardList className="w-5 h-5 text-neural-cyan shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-white">Post-session debrief</p>
+                  <p className="text-xs text-neural-muted mt-0.5">
+                    Structured feedback from this session&apos;s Q&amp;A
+                    {companyMode !== "generic" ? ` · ${selectedCompany.label} bar` : ""}.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                data-testid="generate-debrief"
+                onClick={() => void handleGenerateDebrief()}
+                disabled={debriefLoading || loading}
+                className="inline-flex items-center gap-2 rounded-lg bg-neural-purple/30 border border-neural-purple/50 px-4 py-2 text-sm font-semibold text-white hover:bg-neural-purple/40 transition-colors disabled:opacity-50 shrink-0"
+              >
+                {debriefLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Generating…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 text-neural-cyan" />
+                    Generate Debrief
+                  </>
+                )}
+              </button>
+            </div>
+            {debriefError && (
+              <div className="rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-200 flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                {debriefError}
+              </div>
+            )}
+            {debrief && (
+              <div data-testid="debrief-results" className="rounded-lg border border-neural-cyan/20 bg-neural-bg/80 p-4 space-y-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <p className="text-xs text-neural-muted font-mono uppercase tracking-wide">Overall score</p>
+                  <p className="text-2xl font-bold text-neural-cyan tabular-nums">{debrief.overallScore}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-neural-green mb-2">Strengths</p>
+                  <ul className="list-disc list-inside text-sm text-slate-200 space-y-1">
+                    {debrief.strengths.map((s, i) => (
+                      <li key={i}>{s}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-amber-200/90 mb-2">Improvement areas</p>
+                  <ul className="list-disc list-inside text-sm text-slate-200 space-y-1">
+                    {debrief.improvementAreas.map((s, i) => (
+                      <li key={i}>{s}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-neural-cyan mb-2">Next practice questions</p>
+                  <ol className="list-decimal list-inside text-sm text-slate-200 space-y-1.5">
+                    {debrief.nextPracticeQuestions.map((s, i) => (
+                      <li key={i}>{s}</li>
+                    ))}
+                  </ol>
+                </div>
+                <div className="border-t border-neural-border pt-3">
+                  <p className="text-xs font-semibold text-white mb-1">Coach note</p>
+                  <p className="text-sm text-slate-200 leading-relaxed">{debrief.conciseCoachNote}</p>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
         <div className="rounded-xl border border-neural-border bg-neural-surface/70 p-3">
           <p className="text-xs text-neural-muted font-mono mb-2">Quick start questions</p>
           <div className="flex flex-wrap gap-2 mb-3">
@@ -978,6 +1156,8 @@ export default function SessionPage() {
                 onClick={() => {
                   setQnas([]);
                   setUiError("");
+                  setDebrief(null);
+                  setDebriefError("");
                 }}
                 className="text-xs text-neural-muted hover:text-red-400 transition-colors"
               >

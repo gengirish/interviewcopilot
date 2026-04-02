@@ -4,6 +4,10 @@ import { getPlan } from "@/lib/server/user-store";
 import { canUseAnswer, getUsage, incrementUsage } from "@/lib/server/usage-store";
 import { getPlanLimit } from "@/lib/server/plans";
 import { trackEvent } from "@/lib/server/event-store";
+import {
+  consumeRateLimitToken,
+  rateLimitKeyForRequest,
+} from "@/lib/server/rate-limit";
 
 const ROLE_PERSONAS: Record<string, string> = {
   "ml-engineer": "You are an expert ML/AI Engineer with 5+ years experience in PyTorch, TensorFlow, transformers, LLMs, RAG, fine-tuning, MLOps, and model deployment.",
@@ -15,42 +19,46 @@ const ROLE_PERSONAS: Record<string, string> = {
 };
 
 const VALID_ROLES = new Set(Object.keys(ROLE_PERSONAS));
+
+const VALID_COMPANY_MODES = new Set([
+  "generic",
+  "google",
+  "amazon",
+  "razorpay",
+  "atlassian",
+  "flipkart",
+]);
+
+/** Short style rails appended to the prompt when company mode is set. */
+const COMPANY_MODE_INSTRUCTIONS: Record<string, string> = {
+  generic: "",
+  google:
+    "Interview emphasis (Google-style): crisp structure, depth on scale and complexity, mention testing/monitoring; show how you reason under ambiguity.",
+  amazon:
+    "Interview emphasis (Amazon-style): tie answers to ownership and customer impact; prefer STAR for behavioural prompts; call out operational rigor and trade-offs.",
+  razorpay:
+    "Interview emphasis (Razorpay/fintech): reliability, APIs, idempotency and safe rollouts; awareness of risk, fraud, and compliance; pragmatic delivery.",
+  atlassian:
+    "Interview emphasis (Atlassian-style): collaboration, written clarity, team workflows, and platform-minded extensibility.",
+  flipkart:
+    "Interview emphasis (Flipkart/high-scale commerce): execution speed, peak-load reliability, practical trade-offs, and stakeholder alignment.",
+};
+
 const MAX_QUESTION_LENGTH = 600;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 20;
 
-type RateLimitEntry = { count: number; resetAt: number };
-
-function getIp(req: NextRequest): string {
-  const fwd = req.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0]?.trim() || "unknown";
-  return req.headers.get("x-real-ip") || "unknown";
-}
-
-function getStore(): Map<string, RateLimitEntry> {
-  const g = globalThis as typeof globalThis & {
-    __infinityhireRateLimitStore?: Map<string, RateLimitEntry>;
-  };
-  if (!g.__infinityhireRateLimitStore) {
-    g.__infinityhireRateLimitStore = new Map<string, RateLimitEntry>();
-  }
-  return g.__infinityhireRateLimitStore;
-}
-
-function checkRateLimit(key: string): boolean {
-  const now = Date.now();
-  const store = getStore();
-  const entry = store.get(key);
-
-  if (!entry || entry.resetAt <= now) {
-    store.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
-  }
-
-  if (entry.count >= RATE_LIMIT_MAX_REQUESTS) return false;
-  entry.count += 1;
-  store.set(key, entry);
-  return true;
+function jsonTooManyRequests(retryAfterSeconds: number): NextResponse {
+  const res = NextResponse.json(
+    {
+      error: "Too many requests. Please wait a minute and try again.",
+      code: "rate_limited",
+      retryAfterSeconds,
+    },
+    { status: 429 }
+  );
+  res.headers.set("Retry-After", String(retryAfterSeconds));
+  return res;
 }
 
 function extractQuestionKeywords(question: string): string[] {
@@ -138,19 +146,43 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T
 }
 
 export async function POST(req: NextRequest) {
-  const ip = getIp(req);
-  const allowed = checkRateLimit(ip);
-  if (!allowed) {
-    return NextResponse.json(
-      { error: "Too many requests. Please wait a minute and try again." },
-      { status: 429 }
-    );
+  const user = await getUserFromRequest(req);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { question, role, resumeText } = await req.json().catch(() => ({}));
+  const rlKey = rateLimitKeyForRequest({
+    namespace: "answer",
+    userId: user.id,
+    req,
+  });
+  const rl = consumeRateLimitToken({
+    key: rlKey,
+    windowMs: RATE_LIMIT_WINDOW_MS,
+    maxRequests: RATE_LIMIT_MAX_REQUESTS,
+  });
+  if (!rl.allowed) {
+    return jsonTooManyRequests(rl.retryAfterSeconds);
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const { question, role, resumeText, companyMode: rawCompanyMode } = body as {
+    question?: unknown;
+    role?: unknown;
+    resumeText?: unknown;
+    companyMode?: unknown;
+  };
   const normalizedQuestion = typeof question === "string" ? question.trim() : "";
   const normalizedRole = typeof role === "string" ? role : "backend";
   const safeResumeText = typeof resumeText === "string" ? resumeText : "";
+
+  let normalizedCompanyMode = "generic";
+  if (rawCompanyMode !== undefined && rawCompanyMode !== null && rawCompanyMode !== "") {
+    if (typeof rawCompanyMode !== "string" || !VALID_COMPANY_MODES.has(rawCompanyMode)) {
+      return NextResponse.json({ error: "Invalid company mode." }, { status: 400 });
+    }
+    normalizedCompanyMode = rawCompanyMode;
+  }
 
   if (!normalizedQuestion) {
     return NextResponse.json({ error: "No question provided" }, { status: 400 });
@@ -166,10 +198,6 @@ export async function POST(req: NextRequest) {
   }
 
   // Billing: enforce quota before generation
-  const user = await getUserFromRequest(req);
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
   const plan = await getPlan(user.id);
   const usageBefore = await getUsage(user.id);
   const limit = getPlanLimit(plan);
@@ -191,9 +219,14 @@ export async function POST(req: NextRequest) {
     ? `\n\nCandidate resume/background:\n${safeResumeText.slice(0, 2000)}`
     : "";
 
+  const companyLine =
+    normalizedCompanyMode !== "generic"
+      ? `\n\n${COMPANY_MODE_INSTRUCTIONS[normalizedCompanyMode] || ""}\n`
+      : "";
+
   const fullPrompt = `${persona}
 
-You are helping a candidate answer interview questions in real time.${resumeContext}
+You are helping a candidate answer interview questions in real time.${resumeContext}${companyLine}
 
 Rules:
 - Answer concisely but completely (150-250 words max)

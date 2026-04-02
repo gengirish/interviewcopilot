@@ -45,6 +45,18 @@ test.describe("Dashboard and billing", () => {
   });
 
   test("free user can upgrade to pro from dashboard", async ({ page }, testInfo) => {
+    await page.route("**/api/billing/checkout", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "Checkout is not available.",
+          detail: "e2e",
+        }),
+      });
+    });
+
     const email = `e2e+dash-${Date.now()}-${testInfo.workerIndex}@example.com`;
     await signupAndLogin(page, email);
 
@@ -58,9 +70,9 @@ test.describe("Dashboard and billing", () => {
     await expect(page.getByText(/Plan/i)).toBeVisible();
     await expect(page.getByText(/free/i).first()).toBeVisible();
 
-    const upgradeButton = page.getByRole("button", { name: /upgrade to pro/i });
-    await expect(upgradeButton).toBeVisible();
-    await upgradeButton.click();
+    const checkoutButton = page.getByTestId("dashboard-secure-checkout");
+    await expect(checkoutButton).toBeVisible();
+    await checkoutButton.click();
 
     await expect(page.getByText(/pro/i).first()).toBeVisible({ timeout: 20_000 });
     await expect(page.getByText(/unlimited answers/i)).toBeVisible();

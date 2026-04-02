@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import type { ConnectionOptions } from "tls";
 
 let pool: Pool | null = null;
 let schemaReady: Promise<void> | null = null;
@@ -11,11 +12,31 @@ function getDatabaseUrl(): string {
   return url;
 }
 
+function isTruthy(value: string | undefined): boolean {
+  return value === "1" || value === "true" || value === "yes";
+}
+
+function getProductionSslConfig(): ConnectionOptions | undefined {
+  if (process.env.NODE_ENV !== "production") return undefined;
+
+  // Escape hatch for incidents; keep this disabled in steady state.
+  if (isTruthy(process.env.DATABASE_SSL_ALLOW_INSECURE)) {
+    return { rejectUnauthorized: false };
+  }
+
+  const ca = process.env.DATABASE_CA_CERT?.replace(/\\n/g, "\n").trim();
+  if (ca) {
+    return { rejectUnauthorized: true, ca };
+  }
+
+  return { rejectUnauthorized: true };
+}
+
 export function getPool(): Pool {
   if (pool) return pool;
   pool = new Pool({
     connectionString: getDatabaseUrl(),
-    ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
+    ssl: getProductionSslConfig(),
   });
   return pool;
 }

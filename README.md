@@ -90,12 +90,19 @@ This repository includes GitHub Actions for CI and Vercel deploy:
 Required GitHub secrets:
 
 - `DATABASE_URL`
+- `DATABASE_CA_CERT` (optional, recommended for strict TLS with private CA)
 - `AUTH_SECRET`
 - `OPENROUTER_API_KEY` (optional, fallback still works)
 - `GOOGLE_AI_KEY` (optional)
 - `VERCEL_TOKEN`
 - `VERCEL_ORG_ID`
 - `VERCEL_PROJECT_ID`
+
+Production DB TLS notes:
+
+- App now verifies DB TLS certificates by default in production.
+- Use `DATABASE_CA_CERT` when your DB provider requires a custom CA bundle.
+- `DATABASE_SSL_ALLOW_INSECURE=true` exists as an emergency-only fallback and should remain off in normal operation.
 
 Manual production deploy from local machine (if Vercel CLI is authenticated):
 

@@ -10,6 +10,7 @@ const ALLOWED_EVENTS = new Set<EventType>([
   "onboarding_step_completed",
   "onboarding_dismissed",
   "sample_question_used",
+  "debrief_generated",
 ]);
 
 export async function POST(req: NextRequest) {

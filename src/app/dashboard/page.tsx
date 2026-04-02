@@ -11,11 +11,19 @@ import {
   Loader2,
   ArrowLeft,
   Target,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
-import { getAnalyticsOverview, upgradeToPro } from "@/lib/api";
+import {
+  ApiError,
+  createCheckoutSession,
+  getAnalyticsOverview,
+  getAnswerFeedbackSummary,
+  upgradeToPro,
+} from "@/lib/api";
 import type { AnalyticsOverview } from "@/lib/api";
 import { SESSIONS_STORAGE_KEY } from "@/lib/types";
-import type { SessionSummary } from "@/lib/types";
+import type { AnswerFeedbackSummary, SessionSummary } from "@/lib/types";
 
 function getLocalSessions(): SessionSummary[] {
   if (typeof window === "undefined") return [];
@@ -49,12 +57,17 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [upgrading, setUpgrading] = useState(false);
   const [localSessions, setLocalSessions] = useState<SessionSummary[]>([]);
+  const [feedbackSummary, setFeedbackSummary] = useState<AnswerFeedbackSummary | null>(null);
 
   useEffect(() => {
     getAnalyticsOverview()
       .then(setOverview)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
       .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    getAnswerFeedbackSummary().then(setFeedbackSummary).catch(() => setFeedbackSummary(null));
   }, []);
 
   useEffect(() => {
@@ -176,15 +189,32 @@ export default function DashboardPage() {
           </p>
           {overview?.plan === "free" && (
             <button
+              type="button"
+              data-testid="dashboard-secure-checkout"
               onClick={async () => {
                 setError(null);
                 setUpgrading(true);
                 try {
-                  await upgradeToPro();
-                  const refreshed = await getAnalyticsOverview();
-                  setOverview(refreshed);
+                  const { checkoutUrl } = await createCheckoutSession();
+                  window.location.assign(checkoutUrl);
                 } catch (e) {
-                  setError(e instanceof Error ? e.message : "Upgrade failed");
+                  // 503 = billing not configured (or unavailable). Try mock upgrade when allowed (dev / ALLOW_MOCK_UPGRADE).
+                  const billingNotReady = e instanceof ApiError && e.status === 503;
+                  if (billingNotReady) {
+                    try {
+                      await upgradeToPro();
+                      const refreshed = await getAnalyticsOverview();
+                      setOverview(refreshed);
+                    } catch (inner) {
+                      setError(inner instanceof Error ? inner.message : "Upgrade failed");
+                    }
+                  } else {
+                    setError(
+                      e instanceof Error
+                        ? e.message
+                        : "Checkout is unavailable. Try again or contact support.",
+                    );
+                  }
                 } finally {
                   setUpgrading(false);
                 }
@@ -192,7 +222,7 @@ export default function DashboardPage() {
               disabled={upgrading}
               className="mt-4 rounded-lg bg-neural-cyan px-4 py-2 text-sm font-semibold text-black disabled:opacity-50"
             >
-              {upgrading ? "Upgrading..." : "Upgrade to Pro (Mock)"}
+              {upgrading ? "Starting checkout…" : "Secure checkout"}
             </button>
           )}
         </div>
@@ -222,6 +252,52 @@ export default function DashboardPage() {
               </span>
             </p>
           </div>
+        </div>
+
+        <div className="rounded-xl border border-neural-border bg-neural-surface p-5 mt-6">
+          <div className="flex items-center gap-2 mb-3">
+            <ThumbsUp className="w-5 h-5 text-neural-cyan" />
+            <h2 className="text-lg font-semibold text-white">Interview quality score</h2>
+          </div>
+          <p className="text-sm text-neural-muted mb-3">
+            Uses your helpful/not-helpful feedback to track answer quality and guide improvements.
+          </p>
+          <p className="text-3xl font-bold text-white mb-3">
+            {feedbackSummary?.score === null || feedbackSummary?.score === undefined
+              ? "--"
+              : `${feedbackSummary.score}%`}
+          </p>
+          <div className="text-sm text-neural-muted space-y-1">
+            <p>
+              Helpful votes:{" "}
+              <span className="text-white">
+                {feedbackSummary?.up ?? 0}
+              </span>
+            </p>
+            <p>
+              Not helpful votes:{" "}
+              <span className="text-white">
+                {feedbackSummary?.down ?? 0}
+              </span>
+            </p>
+            <p>
+              Total ratings this month:{" "}
+              <span className="text-white">
+                {feedbackSummary?.total ?? 0}
+              </span>
+            </p>
+          </div>
+          {(feedbackSummary?.total ?? 0) === 0 && (
+            <p className="text-xs text-neural-muted mt-3">
+              Rate answers in session to unlock a personalized quality score.
+            </p>
+          )}
+          <Link
+            href="/session"
+            className="mt-4 inline-flex items-center gap-2 rounded-lg border border-neural-cyan/40 px-3 py-2 text-xs font-semibold text-neural-cyan hover:bg-neural-cyan/10 transition-colors"
+          >
+            Improve score in next session
+          </Link>
         </div>
       </div>
     </main>

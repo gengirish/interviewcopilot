@@ -10,7 +10,8 @@ export type EventType =
   | "onboarding_started"
   | "onboarding_step_completed"
   | "onboarding_dismissed"
-  | "sample_question_used";
+  | "sample_question_used"
+  | "debrief_generated";
 
 export interface ActivationSummary {
   score: number;

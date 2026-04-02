@@ -5,6 +5,8 @@ import type {
   AnswerRequest,
   AnswerResponse,
   ExtractResumeResponse,
+  SessionDebrief,
+  SessionDebriefRequest,
 } from "@/lib/types";
 
 export interface AnalyticsOverview {
@@ -30,7 +32,7 @@ export interface CurrentUserResponse {
   user: { id: string; email: string } | null;
 }
 
-class ApiError extends Error {
+export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
     this.name = "ApiError";
@@ -42,10 +44,19 @@ async function parseJson<T>(res: Response): Promise<T> {
 }
 
 export async function getAnswer(payload: AnswerRequest): Promise<AnswerResponse> {
+  const body: Record<string, unknown> = {
+    question: payload.question,
+    role: payload.role,
+  };
+  if (payload.resumeText !== undefined) body.resumeText = payload.resumeText;
+  if (payload.companyMode !== undefined && payload.companyMode !== "generic") {
+    body.companyMode = payload.companyMode;
+  }
+
   const res = await fetch("/api/answer", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
 
   const data = await parseJson<AnswerResponse>(res);
@@ -67,6 +78,22 @@ export async function extractResume(file: File): Promise<ExtractResumeResponse> 
   const data = await parseJson<ExtractResumeResponse>(res);
   if (!res.ok) {
     throw new ApiError(res.status, data.error || "Could not parse resume");
+  }
+  return data;
+}
+
+export async function generateSessionDebrief(
+  payload: SessionDebriefRequest,
+): Promise<SessionDebrief> {
+  const res = await fetch("/api/session/debrief", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<SessionDebrief & { error?: string }>(res);
+  if (!res.ok) {
+    throw new ApiError(res.status, data.error || "Could not generate debrief");
   }
   return data;
 }
@@ -107,12 +134,25 @@ export async function getSubscription(): Promise<SubscriptionOverview> {
 }
 
 export async function upgradeToPro(): Promise<{ plan: "pro"; success: true }> {
-  const res = await fetch("/api/billing/upgrade", { method: "POST" });
+  const res = await fetch("/api/billing/upgrade", { method: "POST", credentials: "include" });
   const data = await parseJson<{ plan: "pro"; success: true; error?: string }>(res);
   if (!res.ok) {
     throw new ApiError(res.status, data.error || "Failed to upgrade plan");
   }
   return { plan: "pro", success: true };
+}
+
+export async function createCheckoutSession(): Promise<{ checkoutUrl: string }> {
+  const res = await fetch("/api/billing/checkout", { method: "POST", credentials: "include" });
+  const data = await parseJson<{ checkoutUrl?: string; error?: string; detail?: string }>(res);
+  if (!res.ok) {
+    const hint = data.detail ? ` ${data.detail}` : "";
+    throw new ApiError(res.status, (data.error || "Failed to start checkout") + hint);
+  }
+  if (!data.checkoutUrl || typeof data.checkoutUrl !== "string") {
+    throw new ApiError(500, "Checkout did not return a URL");
+  }
+  return { checkoutUrl: data.checkoutUrl };
 }
 
 export async function getCurrentUser(): Promise<CurrentUserResponse["user"]> {
@@ -132,7 +172,8 @@ export type ClientAnalyticsEventType =
   | "onboarding_started"
   | "onboarding_step_completed"
   | "onboarding_dismissed"
-  | "sample_question_used";
+  | "sample_question_used"
+  | "debrief_generated";
 
 export type ClientAnalyticsMetadata = Record<string, string | number | boolean | null>;
 
