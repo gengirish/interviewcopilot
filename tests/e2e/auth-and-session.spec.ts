@@ -17,7 +17,7 @@ test.describe("Auth and session", () => {
     const email = `e2e+signup-${Date.now()}-${testInfo.workerIndex}@example.com`;
 
     await page.getByRole("textbox", { name: /email/i }).fill(email);
-    await page.getByLabel(/password/i).fill("password123");
+    await page.locator("#password").fill("password123");
     await page.getByRole("button", { name: /sign up/i }).click();
 
     await expect(page).toHaveURL("/session", { timeout: 20_000 });
@@ -33,7 +33,7 @@ test.describe("Auth and session", () => {
     await page.goto("/login");
 
     await page.getByRole("textbox", { name: /email/i }).fill(email);
-    await page.getByLabel(/password/i).fill("password123");
+    await page.locator("#password").fill("password123");
     await page.getByRole("button", { name: /sign in/i }).click();
 
     await expect(page).toHaveURL("/session", { timeout: 20_000 });

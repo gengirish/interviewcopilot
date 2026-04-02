@@ -3,7 +3,7 @@ import { test, expect, type Page } from "@playwright/test";
 async function signupViaPage(page: Page, email: string) {
   await page.goto("/signup");
   await page.getByRole("textbox", { name: /email/i }).fill(email);
-  await page.getByLabel(/password/i).fill("password123");
+  await page.locator("#password").fill("password123");
   await page.getByRole("button", { name: /sign up/i }).click();
 }
 
@@ -40,7 +40,7 @@ test.describe("Landing and auth edge cases", () => {
     await context.clearCookies();
     await page.goto("/login");
     await page.getByRole("textbox", { name: /email/i }).fill("no-user@example.com");
-    await page.getByLabel(/password/i).fill("wrong-password");
+    await page.locator("#password").fill("wrong-password");
     await page.getByRole("button", { name: /sign in/i }).click();
 
     await expect(page.getByText(/invalid email or password/i)).toBeVisible({ timeout: 20_000 });

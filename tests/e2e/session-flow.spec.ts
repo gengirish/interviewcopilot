@@ -3,7 +3,7 @@ import { test, expect, type Page } from "@playwright/test";
 async function signupAndLogin(page: Page, email: string) {
   await page.goto("/signup");
   await page.getByRole("textbox", { name: /email/i }).fill(email);
-  await page.getByLabel(/password/i).fill("password123");
+  await page.locator("#password").fill("password123");
   await page.getByRole("button", { name: /sign up/i }).click();
   await expect(page).toHaveURL("/session", { timeout: 20_000 });
 }
