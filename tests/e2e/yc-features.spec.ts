@@ -149,4 +149,211 @@ test.describe("YC features", () => {
     await page.getByTestId("dashboard-secure-checkout").click();
     await expect(page.getByText(/unlimited answers/i)).toBeVisible({ timeout: 20_000 });
   });
+
+  test("question bank generation shows chips and fills draft on chip click", async ({ page }, testInfo) => {
+    await page.route("**/api/billing/subscription", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(mockSubscriptionFree),
+      });
+    });
+    await page.route("**/api/session/question-bank", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          questions: [
+            "E2E_BANK_Q1: How would you validate a new ranking model before full rollout?",
+            "E2E_BANK_Q2: Describe monitoring for data drift in production.",
+          ],
+        }),
+      });
+    });
+
+    const email = `e2e+yc-bank-${Date.now()}-${testInfo.workerIndex}@example.com`;
+    await signupAndLogin(page, email);
+    await page.getByRole("button", { name: /start session/i }).click();
+
+    await page.getByTestId("generate-question-bank").click();
+    await expect(page.getByTestId("question-bank-chips")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("question-bank-chip").first()).toContainText(/E2E_BANK_Q1/i);
+
+    const input = page.getByPlaceholder("e.g. Explain overfitting and how to prevent it");
+    await page.getByTestId("question-bank-chip").first().click();
+    await expect(input).toHaveValue(/E2E_BANK_Q1/i);
+  });
+
+  test("best-answer rewrite shows rewritten block and improvements list", async ({ page }, testInfo) => {
+    await page.route("**/api/billing/subscription", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(mockSubscriptionFree),
+      });
+    });
+    await page.route("**/api/answer", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          answer: "Short mock answer for rewrite.",
+          source: "fallback",
+        }),
+      });
+    });
+    await page.route("**/api/session/rewrite", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          rewrittenAnswer: "E2E_REWRITE: Clear headline, then structured depth with metrics.",
+          improvements: ["Add a one-line thesis up front.", "Tie claims to measurable outcomes.", "State rollback plan."],
+          source: "fallback",
+        }),
+      });
+    });
+
+    const email = `e2e+yc-rewrite-${testInfo.testId}-${Date.now()}@example.com`;
+    await signupAndLogin(page, email);
+    await page.getByRole("button", { name: /start session/i }).click();
+
+    await page.getByPlaceholder("e.g. Explain overfitting and how to prevent it").fill("What is idempotency?");
+    await page.getByRole("button", { name: /^ask$/i }).click();
+    await expect(page.getByText(/AI Answer/i)).toBeVisible({ timeout: 15_000 });
+
+    await page.getByTestId("rewrite-answer-button").click();
+    await expect(page.getByTestId("rewrite-result-block")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("rewrite-result-block")).toContainText(/E2E_REWRITE/i);
+    await expect(page.getByTestId("rewrite-improvements")).toContainText(/thesis/i);
+    await expect(page.getByTestId("rewrite-improvements").locator("li")).toHaveCount(3);
+  });
+
+  test("generate 7-day prep plan renders seven day items", async ({ page }, testInfo) => {
+    await page.route("**/api/billing/subscription", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(mockSubscriptionFree),
+      });
+    });
+    const days = Array.from({ length: 7 }, (_, i) => ({
+      day: i + 1,
+      goal: `E2E Day ${i + 1}: focus block`,
+      drills: ["Task A", "Task B"],
+      expectedOutcome: `Outcome marker ${i + 1}`,
+    }));
+    await page.route("**/api/session/prep-plan", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          days,
+          summary: "E2E seven-day prep overview for the candidate.",
+        }),
+      });
+    });
+
+    const email = `e2e+yc-prep-${testInfo.testId}-${Date.now()}@example.com`;
+    await signupAndLogin(page, email);
+    await page.getByRole("button", { name: /start session/i }).click();
+
+    await page.getByTestId("generate-prep-plan").click();
+    await expect(page.getByTestId("prep-plan-list")).toBeVisible({ timeout: 15_000 });
+    for (let d = 1; d <= 7; d++) {
+      await expect(page.getByTestId(`prep-plan-day-${d}`)).toContainText(new RegExp(`E2E Day ${d}`, "i"));
+    }
+  });
+
+  test("share report shows copyable text after build", async ({ page }, testInfo) => {
+    await page.route("**/api/billing/subscription", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(mockSubscriptionFree),
+      });
+    });
+    await page.route("**/api/answer", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ answer: "Answer for share flow.", source: "fallback" }),
+      });
+    });
+    const debriefPayload = {
+      overallScore: 70,
+      strengths: ["S1"],
+      improvementAreas: ["I1"],
+      nextPracticeQuestions: ["PQ1", "PQ2", "PQ3"],
+      conciseCoachNote: "Coach note.",
+      source: "fallback" as const,
+    };
+    await page.route("**/api/session/debrief", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(debriefPayload),
+      });
+    });
+    await page.route("**/api/session/share-report", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          reportText: "E2E_SHARE_REPORT_LINE_1\nE2E_SHARE_REPORT_LINE_2",
+        }),
+      });
+    });
+
+    const email = `e2e+yc-share-${Date.now()}-${testInfo.workerIndex}@example.com`;
+    await signupAndLogin(page, email);
+    await page.getByRole("button", { name: /start session/i }).click();
+    await page.getByPlaceholder("e.g. Explain overfitting and how to prevent it").fill("Any question?");
+    await page.getByRole("button", { name: /^ask$/i }).click();
+    await expect(page.getByText(/AI Answer/i)).toBeVisible({ timeout: 15_000 });
+
+    await page.getByTestId("generate-debrief").click();
+    await expect(page.getByTestId("debrief-results")).toBeVisible({ timeout: 15_000 });
+
+    await page.getByTestId("share-report-generate").click();
+    await expect(page.getByTestId("share-report-text")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("share-report-text")).toContainText("E2E_SHARE_REPORT_LINE_1");
+  });
+
+  test("team panel generates summary from rubric and notes", async ({ page }, testInfo) => {
+    await page.route("**/api/team/summary", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          summary: "## E2E Team summary\n- Rubric captured\n- Next: debrief",
+          source: "fallback",
+        }),
+      });
+    });
+
+    const email = `e2e+yc-team-${Date.now()}-${testInfo.workerIndex}@example.com`;
+    await signupAndLogin(page, email);
+    await page.goto("/team");
+    await expect(page.getByRole("heading", { name: /team panel mode/i })).toBeVisible({ timeout: 20_000 });
+
+    await page.getByTestId("team-rubric-input").fill("Communication: strong. Depth: mixed.");
+    await page.getByTestId("team-notes-input").fill("Recommend onsite. Probe system design further.");
+    await page.getByTestId("team-generate-summary").click();
+
+    await expect(page.getByTestId("team-summary-output")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("team-summary-output")).toContainText(/E2E Team summary/i);
+  });
 });

@@ -7,6 +7,15 @@ import type {
   ExtractResumeResponse,
   SessionDebrief,
   SessionDebriefRequest,
+  SessionPrepPlanRequest,
+  SessionPrepPlanResponse,
+  SessionQuestionBankRequest,
+  SessionQuestionBankResponse,
+  SessionRewriteRequest,
+  SessionRewriteResponse,
+  ShareReportRequest,
+  ShareReportResponse,
+  TeamSummaryResponse,
 } from "@/lib/types";
 
 export interface AnalyticsOverview {
@@ -98,6 +107,131 @@ export async function generateSessionDebrief(
   return data;
 }
 
+export async function rewriteSessionAnswer(
+  payload: SessionRewriteRequest,
+): Promise<SessionRewriteResponse> {
+  const body: Record<string, unknown> = {
+    question: payload.question,
+    answer: payload.answer,
+    role: payload.role,
+  };
+  if (payload.companyMode !== undefined && payload.companyMode !== "generic") {
+    body.companyMode = payload.companyMode;
+  }
+  const res = await fetch("/api/session/rewrite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+  const data = await parseJson<SessionRewriteResponse & { error?: string }>(res);
+  if (!res.ok) {
+    throw new ApiError(res.status, data.error || "Could not rewrite answer");
+  }
+  return data;
+}
+
+export async function generateCompanyQuestionBank(
+  payload: SessionQuestionBankRequest,
+): Promise<SessionQuestionBankResponse> {
+  const body: Record<string, unknown> = { role: payload.role };
+  if (payload.companyMode !== undefined && payload.companyMode !== "generic") {
+    body.companyMode = payload.companyMode;
+  }
+  if (payload.resumeText !== undefined && payload.resumeText.trim()) {
+    body.resumeText = payload.resumeText;
+  }
+  if (payload.recentTopics !== undefined && payload.recentTopics.length > 0) {
+    body.recentTopics = payload.recentTopics;
+  }
+  const res = await fetch("/api/session/question-bank", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+  const data = await parseJson<SessionQuestionBankResponse & { error?: string }>(res);
+  if (!res.ok) {
+    throw new ApiError(res.status, data.error || "Could not generate question bank");
+  }
+  return data;
+}
+
+export async function generateSessionPrepPlan(
+  payload: SessionPrepPlanRequest,
+): Promise<SessionPrepPlanResponse> {
+  const body: Record<string, unknown> = { role: payload.role };
+  if (payload.companyMode !== undefined && payload.companyMode !== "generic") {
+    body.companyMode = payload.companyMode;
+  }
+  if (payload.focusAreas !== undefined && payload.focusAreas.length > 0) {
+    body.focusAreas = payload.focusAreas;
+  }
+  if (payload.debrief !== undefined && payload.debrief !== null) {
+    body.debrief = payload.debrief;
+  }
+
+  const res = await fetch("/api/session/prep-plan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+  const data = await parseJson<SessionPrepPlanResponse & { error?: string }>(res);
+  if (!res.ok) {
+    throw new ApiError(res.status, data.error || "Could not generate prep plan");
+  }
+  if (!Array.isArray(data.days) || data.days.length !== 7 || typeof data.summary !== "string") {
+    throw new ApiError(500, "Prep plan response was incomplete");
+  }
+  return data;
+}
+
+export async function generateTeamSummary(payload: {
+  rubric: string;
+  notes: string;
+}): Promise<TeamSummaryResponse> {
+  const res = await fetch("/api/team/summary", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(payload),
+  });
+  const data = await parseJson<TeamSummaryResponse & { error?: string }>(res);
+  if (!res.ok) {
+    throw new ApiError(res.status, data.error || "Could not generate team summary");
+  }
+  return data;
+}
+
+export async function generateShareReport(payload: ShareReportRequest): Promise<ShareReportResponse> {
+  const body: Record<string, unknown> = {
+    debrief: payload.debrief,
+    role: payload.role,
+  };
+  if (payload.companyMode !== undefined && payload.companyMode !== "generic") {
+    body.companyMode = payload.companyMode;
+  }
+  if (payload.highlights !== undefined && payload.highlights.length > 0) {
+    body.highlights = payload.highlights;
+  }
+
+  const res = await fetch("/api/session/share-report", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+  const data = await parseJson<ShareReportResponse & { error?: string }>(res);
+  if (!res.ok) {
+    throw new ApiError(res.status, data.error || "Could not build shareable report");
+  }
+  if (typeof data.reportText !== "string" || !data.reportText.trim()) {
+    throw new ApiError(500, "Share report response was empty");
+  }
+  return data;
+}
+
 export function toUserMessage(err: unknown, fallback: string): string {
   if (err instanceof Error && err.message) return err.message;
   return fallback;
@@ -173,7 +307,10 @@ export type ClientAnalyticsEventType =
   | "onboarding_step_completed"
   | "onboarding_dismissed"
   | "sample_question_used"
-  | "debrief_generated";
+  | "debrief_generated"
+  | "team_panel_summary_generated"
+  | "best_answer_rewritten"
+  | "question_bank_generated";
 
 export type ClientAnalyticsMetadata = Record<string, string | number | boolean | null>;
 

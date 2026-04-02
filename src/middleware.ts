@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { AUTH_COOKIE_NAME, verifyToken } from "@/lib/server/jwt";
 
-const PROTECTED_PATHS = ["/session", "/dashboard"];
+const PROTECTED_PATHS = ["/session", "/dashboard", "/team"];
 const AUTH_PATHS = ["/login", "/signup"];
 
 function isProtected(pathname: string): boolean {
@@ -44,5 +44,12 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/session/:path*", "/dashboard/:path*", "/login/:path*", "/signup/:path*"],
+  matcher: [
+    "/session/:path*",
+    "/dashboard/:path*",
+    "/team",
+    "/team/:path*",
+    "/login/:path*",
+    "/signup/:path*",
+  ],
 };

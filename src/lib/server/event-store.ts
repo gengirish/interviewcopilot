@@ -11,7 +11,12 @@ export type EventType =
   | "onboarding_step_completed"
   | "onboarding_dismissed"
   | "sample_question_used"
-  | "debrief_generated";
+  | "debrief_generated"
+  | "share_report_generated"
+  | "team_panel_summary_generated"
+  | "best_answer_rewritten"
+  | "question_bank_generated"
+  | "prep_plan_generated";
 
 export interface ActivationSummary {
   score: number;

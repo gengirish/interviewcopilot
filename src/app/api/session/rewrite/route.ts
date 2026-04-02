@@ -135,7 +135,7 @@ If this was behavioural, reorder into STAR (Situation → Task → Action → Re
 }
 
 function normalizeRewriteResult(
-  partial: { rewrittenAnswer?: string; improvements?: string[] } | null,
+  partial: { rewrittenAnswer?: string; improvements?: unknown } | null,
   fallback: { rewrittenAnswer: string; improvements: string[] },
 ): { rewrittenAnswer: string; improvements: string[] } {
   if (!partial) return fallback;
@@ -143,7 +143,7 @@ function normalizeRewriteResult(
   const rawAns =
     typeof partial.rewrittenAnswer === "string" ? partial.rewrittenAnswer.trim() : "";
   const rewrittenAnswer =
-    rawAns.length >= 40 ? rawAns.slice(0, 6000) : fallback.rewrittenAnswer;
+    rawAns.length >= 60 ? rawAns.slice(0, 6000) : fallback.rewrittenAnswer;
 
   let improvements = normalizeStringArray(partial.improvements, 8, 240);
   if (improvements.length < 3) {
@@ -240,6 +240,15 @@ ${aRaw.slice(0, MAX_ANSWER_LEN)}`;
   const geminiKey = process.env.GOOGLE_AI_KEY;
 
   let merged = normalizeRewriteResult(null, fallback);
+  let llmAccepted = false;
+
+  const acceptLlm = (parsed: { rewrittenAnswer?: string; improvements?: unknown } | null) => {
+    if (!parsed) return false;
+    const next = normalizeRewriteResult(parsed, fallback);
+    if (next.rewrittenAnswer.length < 60 || next.improvements.length < 3) return false;
+    merged = next;
+    return true;
+  };
 
   if (openrouterKey) {
     try {
@@ -261,25 +270,16 @@ ${aRaw.slice(0, MAX_ANSWER_LEN)}`;
       if (res.ok) {
         const data = await withTimeout(res.json(), 14_000);
         const text = data.choices?.[0]?.message?.content as string | undefined;
-        if (text) {
-          const parsed = parseRewriteJson(text);
-          merged = normalizeRewriteResult(parsed, fallback);
+        if (text && acceptLlm(parseRewriteJson(text))) {
+          llmAccepted = true;
         }
       }
     } catch {
-      merged = fallback;
+      merged = normalizeRewriteResult(null, fallback);
     }
   }
 
-  if (merged === fallback && openrouterKey) {
-    /* openrouter failed validation — already fallback */
-  }
-
-  const usedLlm = merged.rewrittenAnswer !== fallback.rewrittenAnswer || merged.improvements.some(
-    (im, i) => im !== fallback.improvements[i],
-  );
-
-  if (!usedLlm && geminiKey) {
+  if (!llmAccepted && geminiKey) {
     try {
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
@@ -293,12 +293,11 @@ ${aRaw.slice(0, MAX_ANSWER_LEN)}`;
         const data = await withTimeout(res.json(), 14_000);
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text as string | undefined;
         if (text) {
-          const parsed = parseRewriteJson(text);
-          merged = normalizeRewriteResult(parsed, fallback);
+          acceptLlm(parseRewriteJson(text));
         }
       }
     } catch {
-      merged = fallback;
+      merged = normalizeRewriteResult(null, fallback);
     }
   }
 

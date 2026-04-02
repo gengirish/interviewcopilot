@@ -22,12 +22,19 @@ import {
   ListChecks,
   Sparkles,
   ClipboardList,
+  Share2,
+  Library,
+  Calendar,
 } from "lucide-react";
 import {
   extractResume,
+  generateCompanyQuestionBank,
   generateSessionDebrief,
+  generateSessionPrepPlan,
+  generateShareReport,
   getAnswer,
   getSubscription,
+  rewriteSessionAnswer,
   submitAnswerFeedback,
   toUserMessage,
   trackEvent,
@@ -39,9 +46,10 @@ import type {
   QnA,
   Role,
   SessionDebrief,
+  SessionPrepPlanResponse,
   SessionSummary,
 } from "@/lib/types";
-import { SESSIONS_STORAGE_KEY } from "@/lib/types";
+import { LAST_SESSION_DEBRIEF_STORAGE_KEY, SESSIONS_STORAGE_KEY } from "@/lib/types";
 import type { SubscriptionOverview } from "@/lib/api";
 
 const ONBOARDING_DISMISSED_KEY = "ihc_session_onboarding_checklist_v1";
@@ -217,14 +225,57 @@ function QuotaUrgencyBanner({
 }
 
 // ── Answer card ───────────────────────────────────────────────────────────────
-function AnswerCard({ qna }: { qna: QnA }) {
+function AnswerCard({
+  qna,
+  role,
+  companyMode,
+}: {
+  qna: QnA;
+  role: Role;
+  companyMode: CompanyMode;
+}) {
   const [copied, setCopied] = useState(false);
   const [feedbackBusy, setFeedbackBusy] = useState(false);
   const [feedbackNotice, setFeedbackNotice] = useState<string | null>(null);
+  const [rewriteBusy, setRewriteBusy] = useState(false);
+  const [rewriteError, setRewriteError] = useState<string | null>(null);
+  const [rewriteBlock, setRewriteBlock] = useState<{
+    rewrittenAnswer: string;
+    improvements: string[];
+  } | null>(null);
+
   const copy = () => {
     navigator.clipboard.writeText(qna.answer);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const runRewrite = async () => {
+    setRewriteBusy(true);
+    setRewriteError(null);
+    try {
+      const out = await rewriteSessionAnswer({
+        question: qna.question,
+        answer: qna.answer,
+        role,
+        ...(companyMode !== "generic" ? { companyMode } : {}),
+      });
+      setRewriteBlock({
+        rewrittenAnswer: out.rewrittenAnswer,
+        improvements: out.improvements,
+      });
+      try {
+        await trackEvent("best_answer_rewritten", {
+          metadata: { companyMode, role },
+        });
+      } catch {
+        /* non-fatal */
+      }
+    } catch (e) {
+      setRewriteError(toUserMessage(e, "Could not rewrite this answer."));
+    } finally {
+      setRewriteBusy(false);
+    }
   };
 
   const sendFeedback = async (rating: AnswerFeedbackRating) => {
@@ -247,7 +298,7 @@ function AnswerCard({ qna }: { qna: QnA }) {
   };
 
   return (
-    <div className="rounded-xl border border-neural-border bg-neural-surface p-4 animate-fade-in">
+    <div data-testid="answer-card" className="rounded-xl border border-neural-border bg-neural-surface p-4 animate-fade-in">
       <div className="flex items-start justify-between gap-2 mb-3">
         <div>
           <span className="text-xs text-neural-muted font-mono">{qna.timestamp.toLocaleTimeString()}</span>
@@ -263,6 +314,50 @@ function AnswerCard({ qna }: { qna: QnA }) {
           <span className="ml-2 text-neural-muted">({qna.source})</span>
         </p>
         <p className="text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">{qna.answer}</p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            data-testid="rewrite-answer-button"
+            disabled={rewriteBusy}
+            onClick={() => void runRewrite()}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-neural-purple/40 bg-neural-purple/15 px-2.5 py-1 text-xs font-semibold text-neural-cyan hover:bg-neural-purple/25 transition-colors disabled:opacity-50"
+          >
+            {rewriteBusy ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Rewriting…
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-3.5 h-3.5" />
+                Rewrite this answer
+              </>
+            )}
+          </button>
+        </div>
+        {rewriteError && (
+          <p className="mt-2 text-xs text-red-300" role="alert">
+            {rewriteError}
+          </p>
+        )}
+        {rewriteBlock && (
+          <div
+            data-testid="rewrite-result-block"
+            className="mt-3 rounded-lg border border-neural-cyan/25 bg-neural-bg/80 p-3 space-y-2"
+          >
+            <p className="text-xs font-semibold text-neural-green">Rewritten answer</p>
+            <p className="text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">{rewriteBlock.rewrittenAnswer}</p>
+            <p className="text-xs font-semibold text-amber-200/90 pt-1">Improvements</p>
+            <ul
+              data-testid="rewrite-improvements"
+              className="list-disc list-inside text-xs text-slate-200 space-y-1"
+            >
+              {rewriteBlock.improvements.map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        )}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <span className="text-xs text-neural-muted">Was this helpful?</span>
           <button
@@ -319,6 +414,17 @@ export default function SessionPage() {
   const [debrief, setDebrief] = useState<SessionDebrief | null>(null);
   const [debriefLoading, setDebriefLoading] = useState(false);
   const [debriefError, setDebriefError] = useState("");
+  const [shareReportText, setShareReportText] = useState<string | null>(null);
+  const [shareReportLoading, setShareReportLoading] = useState(false);
+  const [shareReportError, setShareReportError] = useState("");
+  const [shareCopied, setShareCopied] = useState(false);
+  const [questionBankQuestions, setQuestionBankQuestions] = useState<string[] | null>(null);
+  const [questionBankLoading, setQuestionBankLoading] = useState(false);
+  const [questionBankError, setQuestionBankError] = useState("");
+  const [prepPlan, setPrepPlan] = useState<SessionPrepPlanResponse | null>(null);
+  const [prepPlanLoading, setPrepPlanLoading] = useState(false);
+  const [prepPlanError, setPrepPlanError] = useState("");
+  const [prepPlanCopied, setPrepPlanCopied] = useState(false);
   const [roleStepDoneUi, setRoleStepDoneUi] = useState(false);
   const [samplePreparedUi, setSamplePreparedUi] = useState(false);
   const onboardingStartedSentRef = useRef(false);
@@ -553,6 +659,8 @@ export default function SessionPage() {
   const handleGenerateDebrief = useCallback(async () => {
     if (!qnas.length || debriefLoading) return;
     setDebriefError("");
+    setShareReportText(null);
+    setShareReportError("");
     setDebriefLoading(true);
     try {
       const qnasPayload = qnas.map((q) => ({
@@ -565,6 +673,14 @@ export default function SessionPage() {
         companyMode,
       });
       setDebrief(result);
+      try {
+        localStorage.setItem(
+          LAST_SESSION_DEBRIEF_STORAGE_KEY,
+          JSON.stringify({ debrief: result, role, companyMode }),
+        );
+      } catch {
+        /* non-fatal */
+      }
       try {
         await trackEvent("debrief_generated", {
           metadata: { companyMode, qnaCount: qnas.length },
@@ -579,6 +695,89 @@ export default function SessionPage() {
       setDebriefLoading(false);
     }
   }, [qnas, role, companyMode, debriefLoading]);
+
+  const handleGenerateShareReport = useCallback(async () => {
+    if (!debrief || shareReportLoading) return;
+    setShareReportError("");
+    setShareReportLoading(true);
+    try {
+      const { reportText } = await generateShareReport({
+        debrief,
+        role,
+        companyMode,
+        highlights: debrief.strengths.slice(0, 4),
+      });
+      setShareReportText(reportText);
+    } catch (err) {
+      setShareReportText(null);
+      setShareReportError(toUserMessage(err, "Could not build shareable report."));
+    } finally {
+      setShareReportLoading(false);
+    }
+  }, [debrief, role, companyMode, shareReportLoading]);
+
+  const copyShareReport = useCallback(() => {
+    if (!shareReportText) return;
+    void navigator.clipboard.writeText(shareReportText);
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
+  }, [shareReportText]);
+
+  const handleGenerateQuestionBank = useCallback(async () => {
+    if (questionBankLoading) return;
+    setQuestionBankError("");
+    setQuestionBankLoading(true);
+    try {
+      const recentTopics = qnas.map((q) => q.question).slice(-8);
+      const { questions } = await generateCompanyQuestionBank({
+        role,
+        companyMode,
+        ...(resumeText.trim() ? { resumeText: resumeText.trim() } : {}),
+        ...(recentTopics.length ? { recentTopics } : {}),
+      });
+      setQuestionBankQuestions(questions);
+      try {
+        await trackEvent("question_bank_generated", {
+          metadata: { companyMode, count: questions.length },
+        });
+      } catch {
+        /* non-fatal */
+      }
+    } catch (err) {
+      setQuestionBankQuestions(null);
+      setQuestionBankError(toUserMessage(err, "Could not generate question bank."));
+    } finally {
+      setQuestionBankLoading(false);
+    }
+  }, [questionBankLoading, qnas, role, companyMode, resumeText]);
+
+  const handleGeneratePrepPlan = useCallback(async () => {
+    if (prepPlanLoading) return;
+    setPrepPlanError("");
+    setPrepPlanLoading(true);
+    try {
+      const debriefPayload = debrief
+        ? {
+            overallScore: debrief.overallScore,
+            strengths: debrief.strengths,
+            improvementAreas: debrief.improvementAreas,
+            conciseCoachNote: debrief.conciseCoachNote,
+            nextPracticeQuestions: debrief.nextPracticeQuestions,
+          }
+        : undefined;
+      const plan = await generateSessionPrepPlan({
+        role,
+        companyMode,
+        debrief: debriefPayload,
+      });
+      setPrepPlan(plan);
+    } catch (err) {
+      setPrepPlan(null);
+      setPrepPlanError(toUserMessage(err, "Could not generate prep plan."));
+    } finally {
+      setPrepPlanLoading(false);
+    }
+  }, [prepPlanLoading, role, companyMode, debrief]);
 
   const exportTranscript = useCallback(() => {
     if (!qnas.length) return;
@@ -924,6 +1123,9 @@ export default function SessionPage() {
                 <Download className="w-3 h-3" /> Export
               </button>
             )}
+            <Link href="/team" className="text-xs text-neural-muted hover:text-white transition-colors">
+              Team panel
+            </Link>
             <Link href="/dashboard" className="text-xs text-neural-muted hover:text-white transition-colors">Dashboard</Link>
             <button
               onClick={async () => {
@@ -985,7 +1187,9 @@ export default function SessionPage() {
             <p className="text-neural-muted text-sm mt-2">Press <strong className="text-white">Start Listening</strong> then speak your interview question.</p>
           </div>
         )}
-        {qnas.map((qna) => <AnswerCard key={qna.id} qna={qna} />)}
+        {qnas.map((qna) => (
+          <AnswerCard key={qna.id} qna={qna} role={role} companyMode={companyMode} />
+        ))}
 
         {/* Loading indicator */}
         {loading && (
@@ -1080,10 +1284,243 @@ export default function SessionPage() {
                   <p className="text-xs font-semibold text-white mb-1">Coach note</p>
                   <p className="text-sm text-slate-200 leading-relaxed">{debrief.conciseCoachNote}</p>
                 </div>
+
+                <div className="border-t border-neural-border pt-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold text-white">Shareable report</p>
+                      <p className="text-xs text-neural-muted mt-0.5">
+                        Plain-text summary you can paste to a mentor or study group.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      data-testid="share-report-generate"
+                      onClick={() => void handleGenerateShareReport()}
+                      disabled={shareReportLoading || loading}
+                      className="inline-flex items-center gap-2 rounded-lg border border-neural-cyan/40 bg-neural-cyan/10 px-3 py-2 text-xs font-semibold text-neural-cyan hover:bg-neural-cyan/15 transition-colors disabled:opacity-50 shrink-0"
+                    >
+                      {shareReportLoading ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          Building…
+                        </>
+                      ) : (
+                        <>
+                          <Share2 className="w-3.5 h-3.5" />
+                          Build shareable report
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  {shareReportError && (
+                    <div className="rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-200 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                      {shareReportError}
+                    </div>
+                  )}
+                  {shareReportText && (
+                    <div data-testid="share-report-output" className="space-y-2">
+                      <pre
+                        data-testid="share-report-text"
+                        className="text-xs text-slate-200 whitespace-pre-wrap font-sans leading-relaxed max-h-48 overflow-y-auto rounded-lg border border-neural-border bg-neural-bg/90 p-3"
+                      >
+                        {shareReportText}
+                      </pre>
+                      <button
+                        type="button"
+                        onClick={() => copyShareReport()}
+                        className="inline-flex items-center gap-2 rounded-lg border border-neural-border px-3 py-2 text-xs font-semibold text-neural-muted hover:text-white transition-colors"
+                      >
+                        {shareCopied ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-neural-green" />
+                            Copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            Copy report
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </section>
         )}
+
+        <section
+          aria-label="Company question bank"
+          className="rounded-xl border border-neural-border bg-neural-surface/70 p-3 space-y-3"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-start gap-2 min-w-0">
+              <Library className="w-4 h-4 text-neural-cyan shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-white">Company question bank</p>
+                <p className="text-xs text-neural-muted mt-0.5 leading-relaxed">
+                  Follow-ups tuned to your role
+                  {companyMode !== "generic" ? ` and ${selectedCompany.label}` : ""}. Tap one to fill the draft.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              data-testid="generate-question-bank"
+              onClick={() => void handleGenerateQuestionBank()}
+              disabled={questionBankLoading || loading}
+              className="inline-flex items-center gap-2 rounded-lg border border-neural-cyan/40 bg-neural-cyan/10 px-3 py-2 text-xs font-semibold text-neural-cyan hover:bg-neural-cyan/15 transition-colors disabled:opacity-50 shrink-0"
+            >
+              {questionBankLoading ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Generating…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Generate company question bank
+                </>
+              )}
+            </button>
+          </div>
+          {questionBankError && (
+            <div className="rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-200 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              {questionBankError}
+            </div>
+          )}
+          {questionBankQuestions && questionBankQuestions.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs text-neural-muted font-mono">Tap to use in draft</p>
+              <div data-testid="question-bank-chips" className="flex flex-wrap gap-2">
+                {questionBankQuestions.map((q) => (
+                  <button
+                    key={q}
+                    type="button"
+                    data-testid="question-bank-chip"
+                    title={q}
+                    onClick={() => setDraftQuestion(q)}
+                    className="max-w-full text-left rounded-lg border border-neural-border px-3 py-2 text-xs text-slate-200 hover:border-neural-cyan/40 hover:text-white transition-colors line-clamp-2"
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        <section
+          aria-label="Seven day prep plan"
+          className="rounded-xl border border-neural-border bg-neural-surface/70 p-3 space-y-3"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-start gap-2 min-w-0">
+              <Calendar className="w-4 h-4 text-neural-cyan shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs font-semibold text-white">7-day prep plan</p>
+                <p className="text-xs text-neural-muted mt-0.5 leading-relaxed">
+                  Structured drills aligned to your role and interview bar.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              data-testid="generate-prep-plan"
+              onClick={() => void handleGeneratePrepPlan()}
+              disabled={prepPlanLoading || loading}
+              className="inline-flex items-center gap-2 rounded-lg border border-neural-cyan/40 bg-neural-cyan/10 px-3 py-2 text-xs font-semibold text-neural-cyan hover:bg-neural-cyan/15 transition-colors disabled:opacity-50 shrink-0"
+            >
+              {prepPlanLoading ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Generating…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Generate 7-day plan
+                </>
+              )}
+            </button>
+          </div>
+          {prepPlanError && (
+            <div className="rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-2 text-xs text-red-200 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              {prepPlanError}
+            </div>
+          )}
+          {prepPlan && prepPlan.days.length > 0 && (
+            <div data-testid="prep-plan-list" className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-slate-200 leading-relaxed flex-1 min-w-0">{prepPlan.summary}</p>
+                <button
+                  type="button"
+                  data-testid="prep-plan-copy"
+                  onClick={async () => {
+                    const text = [
+                      "InfinityHire Copilot — 7-day prep plan",
+                      "",
+                      prepPlan.summary,
+                      "",
+                      ...prepPlan.days.flatMap((d) => [
+                        `Day ${d.day}`,
+                        `Goal: ${d.goal}`,
+                        "Drills:",
+                        ...d.drills.map((drill) => `- ${drill}`),
+                        `Expected outcome: ${d.expectedOutcome}`,
+                        "",
+                      ]),
+                    ].join("\n");
+                    try {
+                      await navigator.clipboard.writeText(text);
+                      setPrepPlanCopied(true);
+                      window.setTimeout(() => setPrepPlanCopied(false), 2000);
+                    } catch {
+                      setPrepPlanError("Could not copy to clipboard.");
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 rounded-lg border border-neural-border px-2 py-1 text-[10px] font-semibold text-neural-muted hover:text-white shrink-0"
+                >
+                  {prepPlanCopied ? (
+                    <>
+                      <Check className="w-3 h-3 text-neural-green" /> Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3 h-3" /> Copy
+                    </>
+                  )}
+                </button>
+              </div>
+              {prepPlan.days.map((d) => (
+                <div
+                  key={d.day}
+                  data-testid={`prep-plan-day-${d.day}`}
+                  className="rounded-lg border border-neural-border bg-neural-bg/80 p-3"
+                >
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-neural-cyan mb-1">
+                    Day {d.day}
+                  </p>
+                  <p className="text-xs font-semibold text-white">{d.goal}</p>
+                  <ul className="mt-2 list-disc list-inside text-xs text-slate-200 space-y-1">
+                    {d.drills.map((t, i) => (
+                      <li key={i}>{t}</li>
+                    ))}
+                  </ul>
+                  <p className="mt-2 text-[11px] text-slate-300">
+                    <span className="text-neural-muted">Expected: </span>
+                    {d.expectedOutcome}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
 
         <div className="rounded-xl border border-neural-border bg-neural-surface/70 p-3">
           <p className="text-xs text-neural-muted font-mono mb-2">Quick start questions</p>
@@ -1158,6 +1595,12 @@ export default function SessionPage() {
                   setUiError("");
                   setDebrief(null);
                   setDebriefError("");
+                  setShareReportText(null);
+                  setShareReportError("");
+                  setQuestionBankQuestions(null);
+                  setQuestionBankError("");
+                  setPrepPlan(null);
+                  setPrepPlanError("");
                 }}
                 className="text-xs text-neural-muted hover:text-red-400 transition-colors"
               >

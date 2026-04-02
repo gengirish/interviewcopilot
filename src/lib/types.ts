@@ -66,6 +66,44 @@ export interface SessionDebrief {
   source?: "openrouter" | "gemini" | "fallback";
 }
 
+export interface SessionRewriteRequest {
+  question: string;
+  answer: string;
+  role: Role;
+  companyMode?: CompanyMode;
+}
+
+export interface SessionRewriteResponse {
+  rewrittenAnswer: string;
+  improvements: string[];
+}
+
+export interface SessionQuestionBankRequest {
+  role: Role;
+  companyMode?: CompanyMode;
+  resumeText?: string;
+  recentTopics?: string[];
+}
+
+export interface SessionQuestionBankResponse {
+  questions: string[];
+}
+
+/** Body for POST /api/session/share-report */
+export interface ShareReportRequest {
+  debrief: SessionDebrief;
+  role: Role;
+  companyMode?: CompanyMode;
+  /** Optional extra bullets to include in the shareable text. */
+  highlights?: string[];
+}
+
+export interface ShareReportResponse {
+  reportText: string;
+  /** Reserved for a future public link; omitted in MVP. */
+  shareSlug?: string;
+}
+
 export type AnswerFeedbackRating = "up" | "down";
 
 export interface AnswerFeedbackPayload {
@@ -92,6 +130,9 @@ export interface SessionSummary {
 
 export const SESSIONS_STORAGE_KEY = "infinityhire-copilot.sessions";
 
+/** Latest session debrief JSON for dashboard prep plan pre-fill (optional). */
+export const LAST_SESSION_DEBRIEF_STORAGE_KEY = "infinityhire-copilot.last-session-debrief";
+
 /** Global funnel cohort (signup in window → ever reached step). Rates vs signups. */
 export interface FunnelAggregateSummary {
   signups: number;
@@ -111,32 +152,29 @@ export interface AnalyticsFunnelResponse {
   aggregate: FunnelAggregateSummary;
 }
 
-/** AI-generated practice questions for the session draft (server may use LLM or fallback). */
-export interface QuestionBankResponse {
-  questions: string[];
-  source?: AnswerSource;
-}
-
-export interface AnswerRewriteResponse {
-  rewrittenAnswer: string;
-  improvements: string[];
-  source?: AnswerSource;
-}
-
+/** One day in the 7-day prep plan from POST /api/session/prep-plan */
 export interface PrepPlanDay {
   day: number;
-  title: string;
-  tasks: string[];
+  goal: string;
+  drills: string[];
+  expectedOutcome: string;
 }
 
-export interface PrepPlanResponse {
+export interface SessionPrepPlanRequest {
+  role: Role;
+  companyMode?: CompanyMode;
+  debrief?: Partial<
+    Pick<
+      SessionDebrief,
+      "overallScore" | "strengths" | "improvementAreas" | "conciseCoachNote" | "nextPracticeQuestions"
+    >
+  >;
+  focusAreas?: string[];
+}
+
+export interface SessionPrepPlanResponse {
   days: PrepPlanDay[];
-  source?: AnswerSource;
-}
-
-export interface ShareReportResponse {
-  text: string;
-  source?: AnswerSource;
+  summary: string;
 }
 
 export interface TeamSummaryResponse {
