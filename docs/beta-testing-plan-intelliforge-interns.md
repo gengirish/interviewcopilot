@@ -2,6 +2,16 @@
 
 Prepared for: IntelliForge AI interns ([https://www.intelliforge.tech/](https://www.intelliforge.tech/))
 
+## Beta Access URLs
+
+- Production app: [https://infinityhire.ai](https://infinityhire.ai)
+- Login: [https://infinityhire.ai/login](https://infinityhire.ai/login)
+- Signup: [https://infinityhire.ai/signup](https://infinityhire.ai/signup)
+- Session: [https://infinityhire.ai/session](https://infinityhire.ai/session)
+- Dashboard: [https://infinityhire.ai/dashboard](https://infinityhire.ai/dashboard)
+- Team panel: [https://infinityhire.ai/team](https://infinityhire.ai/team)
+- Company site (intern org): [https://www.intelliforge.tech/](https://www.intelliforge.tech/)
+
 ## Purpose
 
 Run a structured beta test to validate:
@@ -42,15 +52,15 @@ We are running a focused beta test for **InfinityHire Copilot** (AI interview as
 
 ### Testing window
 
-- **Start:** [Date]
-- **End:** [Date]
+- **Start:** [YYYY-MM-DD]
+- **End:** [YYYY-MM-DD]
 - **Expected effort:** 45-60 mins/day per tester
 
 ### Where to report
 
-- Bugs: [Jira/Notion/Sheet link]
-- UX feedback: [Form link]
-- Daily summary: [Slack channel]
+- Bugs tracker (replace with your actual board): [https://notion.so/your-workspace/infinityhire-beta-bugs](https://notion.so/your-workspace/infinityhire-beta-bugs)
+- UX feedback form (replace with your form): [https://forms.gle/your-feedback-form-link](https://forms.gle/your-feedback-form-link)
+- Daily summary channel (replace with your channel): [https://app.slack.com/client/your-workspace/C-infinityhire-beta](https://app.slack.com/client/your-workspace/C-infinityhire-beta)
 
 This sprint is critical for launch readiness.
 
@@ -208,4 +218,21 @@ If needed, create these as companion docs:
 - Google Form template for feedback collection
 - Notion/Jira bug triage board template
 - Daily Slack/WhatsApp status message template
+
+## Quick Share Version (with URLs)
+
+Use this short block in WhatsApp/Slack/email:
+
+Hi team - InfinityHire beta testing starts now.
+
+- App: [https://infinityhire.ai](https://infinityhire.ai)
+- Signup: [https://infinityhire.ai/signup](https://infinityhire.ai/signup)
+- Session: [https://infinityhire.ai/session](https://infinityhire.ai/session)
+- Dashboard: [https://infinityhire.ai/dashboard](https://infinityhire.ai/dashboard)
+- Team panel: [https://infinityhire.ai/team](https://infinityhire.ai/team)
+
+Report here:
+- Bugs: [https://notion.so/your-workspace/infinityhire-beta-bugs](https://notion.so/your-workspace/infinityhire-beta-bugs)
+- Feedback: [https://forms.gle/your-feedback-form-link](https://forms.gle/your-feedback-form-link)
+- Daily updates: [https://app.slack.com/client/your-workspace/C-infinityhire-beta](https://app.slack.com/client/your-workspace/C-infinityhire-beta)
 
