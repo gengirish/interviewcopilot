@@ -311,7 +311,6 @@ function AnswerCard({
       <div className="border-t border-neural-border pt-3">
         <p className="text-neural-cyan text-xs font-mono mb-1">
           💡 AI Answer
-          <span className="ml-2 text-neural-muted">({qna.source})</span>
         </p>
         <p className="text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">{qna.answer}</p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
