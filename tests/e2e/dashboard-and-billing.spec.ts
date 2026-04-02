@@ -57,6 +57,34 @@ test.describe("Dashboard and billing", () => {
       });
     });
 
+    await page.route("**/api/billing/upgrade", async (route) => {
+      if (route.request().method() !== "POST") return route.continue();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ plan: "pro" }),
+      });
+    });
+
+    let overviewCallCount = 0;
+    await page.route("**/api/analytics/overview", async (route) => {
+      if (route.request().method() !== "GET") return route.continue();
+      overviewCallCount++;
+      const plan = overviewCallCount <= 1 ? "free" : "pro";
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          plan,
+          answersThisMonth: 3,
+          monthlyQuota: plan === "pro" ? 999999 : 30,
+          memberSince: new Date().toISOString(),
+          sessionsCount: 1,
+          feedbackScore: null,
+        }),
+      });
+    });
+
     const email = `e2e+dash-${Date.now()}-${testInfo.workerIndex}@example.com`;
     await signupAndLogin(page, email);
 
