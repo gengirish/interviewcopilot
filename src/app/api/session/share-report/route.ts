@@ -5,6 +5,7 @@ import {
   consumeRateLimitToken,
   rateLimitKeyForRequest,
 } from "@/lib/server/rate-limit";
+import { trackEvent } from "@/lib/server/event-store";
 
 const VALID_ROLES = new Set<string>([
   "ml-engineer",
@@ -138,6 +139,9 @@ export async function POST(req: NextRequest) {
   }
 
   const reportText = buildReportText({ debrief, role, companyMode, highlights });
+
+  trackEvent(user.id, "share_report_generated", { role, companyMode }).catch(() => {});
+
   const payload: ShareReportResponse = { reportText };
   return NextResponse.json(payload);
 }

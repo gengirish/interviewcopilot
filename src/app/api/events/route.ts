@@ -4,6 +4,8 @@ import { trackEvent, type EventType } from "@/lib/server/event-store";
 
 const ALLOWED_EVENTS = new Set<EventType>([
   "session_started",
+  "session_completed",
+  "return_session_started",
   "first_question_asked",
   "upgraded_to_pro",
   "onboarding_started",
@@ -11,6 +13,7 @@ const ALLOWED_EVENTS = new Set<EventType>([
   "onboarding_dismissed",
   "sample_question_used",
   "debrief_generated",
+  "share_report_generated",
   "team_panel_summary_generated",
   "best_answer_rewritten",
   "question_bank_generated",

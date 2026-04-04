@@ -301,6 +301,8 @@ export async function getCurrentUser(): Promise<CurrentUserResponse["user"]> {
 
 export type ClientAnalyticsEventType =
   | "session_started"
+  | "session_completed"
+  | "return_session_started"
   | "first_question_asked"
   | "upgraded_to_pro"
   | "onboarding_started"
@@ -308,6 +310,7 @@ export type ClientAnalyticsEventType =
   | "onboarding_dismissed"
   | "sample_question_used"
   | "debrief_generated"
+  | "share_report_generated"
   | "team_panel_summary_generated"
   | "best_answer_rewritten"
   | "question_bank_generated";
@@ -349,6 +352,99 @@ export async function submitAnswerFeedback(payload: AnswerFeedbackPayload): Prom
     throw new ApiError(res.status, data.error || "Failed to submit feedback");
   }
   return { ok: true };
+}
+
+export interface SessionListItem {
+  id: string;
+  userId: string;
+  role: string;
+  companyMode: string;
+  resumeSnippet: string | null;
+  startedAt: string;
+  endedAt: string | null;
+  questionCount: number;
+  debriefScore: number | null;
+}
+
+export interface SessionQnAItem {
+  id: string;
+  sessionId: string;
+  question: string;
+  answer: string;
+  source: string;
+  feedback: string | null;
+  askedAt: string;
+  seq: number;
+}
+
+export interface SessionDetail {
+  session: SessionListItem;
+  qnas: SessionQnAItem[];
+}
+
+export async function createServerSession(params: {
+  role: string;
+  companyMode: string;
+  resumeSnippet?: string;
+}): Promise<SessionListItem> {
+  const res = await fetch("/api/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(params),
+  });
+  const data = await parseJson<SessionListItem & { error?: string }>(res);
+  if (!res.ok) throw new ApiError(res.status, data.error || "Failed to create session");
+  return data;
+}
+
+export async function addServerQnA(
+  sessionId: string,
+  params: { question: string; answer: string; source: string },
+): Promise<SessionQnAItem> {
+  const res = await fetch(`/api/sessions/${sessionId}/qnas`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(params),
+  });
+  const data = await parseJson<SessionQnAItem & { error?: string }>(res);
+  if (!res.ok) throw new ApiError(res.status, data.error || "Failed to save Q&A");
+  return data;
+}
+
+export async function endServerSession(
+  sessionId: string,
+  debriefScore?: number,
+): Promise<void> {
+  const res = await fetch(`/api/sessions/${sessionId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ debriefScore }),
+  });
+  if (!res.ok) {
+    const data = await parseJson<{ error?: string }>(res);
+    throw new ApiError(res.status, data.error || "Failed to end session");
+  }
+}
+
+export async function listServerSessions(limit = 20, offset = 0): Promise<{ sessions: SessionListItem[] }> {
+  const res = await fetch(`/api/sessions?limit=${limit}&offset=${offset}`, {
+    credentials: "include",
+  });
+  const data = await parseJson<{ sessions: SessionListItem[]; error?: string }>(res);
+  if (!res.ok) throw new ApiError(res.status, data.error || "Failed to load sessions");
+  return data;
+}
+
+export async function getServerSession(sessionId: string): Promise<SessionDetail> {
+  const res = await fetch(`/api/sessions/${sessionId}`, {
+    credentials: "include",
+  });
+  const data = await parseJson<SessionDetail & { error?: string }>(res);
+  if (!res.ok) throw new ApiError(res.status, data.error || "Failed to load session");
+  return data;
 }
 
 export async function getAnswerFeedbackSummary(monthKey?: string): Promise<AnswerFeedbackSummary> {

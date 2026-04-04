@@ -39,6 +39,9 @@ import {
   toUserMessage,
   trackEvent,
   upgradeToPro,
+  createServerSession,
+  addServerQnA,
+  endServerSession,
 } from "@/lib/api";
 import type {
   AnswerFeedbackRating,
@@ -404,6 +407,7 @@ export default function SessionPage() {
   const [subscriptionLoading, setSubscriptionLoading] = useState(true);
   const [upgrading, setUpgrading] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
+  const [serverSessionId, setServerSessionId] = useState<string | null>(null);
   const [demoFromUrl, setDemoFromUrl] = useState(false);
   const demoDraftAppliedRef = useRef(false);
   const [onboardingStorageReady, setOnboardingStorageReady] = useState(false);
@@ -471,13 +475,22 @@ export default function SessionPage() {
         resumeText,
         ...(companyMode !== "generic" ? { companyMode } : {}),
       });
+      const finalAnswer = answer || "Could not generate answer. Please try again.";
+      const finalSource = source || "unknown";
       setQnas((prev) => [...prev, {
         id: Date.now().toString(),
         question: cleanedQuestion,
-        answer: answer || "Could not generate answer. Please try again.",
-        source: source || "unknown",
+        answer: finalAnswer,
+        source: finalSource,
         timestamp: new Date(),
       }]);
+      if (serverSessionId) {
+        addServerQnA(serverSessionId, {
+          question: cleanedQuestion,
+          answer: finalAnswer,
+          source: finalSource,
+        }).catch(() => { /* non-fatal */ });
+      }
       await refreshSubscription();
     } catch (err) {
       const message = toUserMessage(err, "Network error. Please check your connection.");
@@ -497,7 +510,7 @@ export default function SessionPage() {
       setCurrentQuestion("");
       setDraftQuestion("");
     }
-  }, [loading, refreshSubscription, role, resumeText, companyMode]);
+  }, [loading, refreshSubscription, role, resumeText, companyMode, serverSessionId]);
 
   const { isListening, transcript, start, stop } = useSpeechRecognition(handleQuestion, setSpeechError);
 
@@ -672,6 +685,9 @@ export default function SessionPage() {
         companyMode,
       });
       setDebrief(result);
+      if (serverSessionId) {
+        endServerSession(serverSessionId, result.overallScore).catch(() => { /* non-fatal */ });
+      }
       try {
         localStorage.setItem(
           LAST_SESSION_DEBRIEF_STORAGE_KEY,
@@ -693,7 +709,7 @@ export default function SessionPage() {
     } finally {
       setDebriefLoading(false);
     }
-  }, [qnas, role, companyMode, debriefLoading]);
+  }, [qnas, role, companyMode, debriefLoading, serverSessionId]);
 
   const handleGenerateShareReport = useCallback(async () => {
     if (!debrief || shareReportLoading) return;
@@ -780,31 +796,41 @@ export default function SessionPage() {
 
   const exportTranscript = useCallback(() => {
     if (!qnas.length) return;
-    const data = qnas
-      .map((entry) => {
-        return [
-          `[${entry.timestamp.toLocaleTimeString()}] QUESTION`,
-          entry.question,
-          "",
-          `[${entry.timestamp.toLocaleTimeString()}] ANSWER (${entry.source})`,
-          entry.answer,
-          "",
-          "-----",
-          "",
-        ].join("\n");
-      })
-      .join("\n");
+    const selectedRoleLabel = ROLES.find((r) => r.value === role)?.label ?? role;
+    const selectedCompanyLabel = COMPANY_OPTIONS.find((c) => c.value === companyMode)?.label ?? companyMode;
+    const date = new Date().toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" });
 
-    const blob = new Blob([data], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `infinityhire-session-${new Date().toISOString().slice(0, 10)}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  }, [qnas]);
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>InfinityHire Session — ${date}</title>
+<style>
+  body{font-family:system-ui,-apple-system,sans-serif;max-width:720px;margin:0 auto;padding:40px 24px;color:#1a1a2e;line-height:1.6}
+  h1{font-size:22px;margin-bottom:4px}
+  .meta{color:#666;font-size:13px;margin-bottom:32px}
+  .qna{margin-bottom:28px;page-break-inside:avoid}
+  .q{font-weight:600;font-size:14px;color:#1a1a2e;margin-bottom:6px}
+  .a{font-size:14px;color:#333;white-space:pre-wrap;background:#f8f9fa;border-radius:8px;padding:12px 16px}
+  .time{color:#999;font-size:11px}
+  .footer{border-top:1px solid #eee;padding-top:16px;margin-top:32px;font-size:11px;color:#999}
+  @media print{body{padding:20px}@page{margin:1.5cm}}
+</style></head><body>
+<h1>InfinityHire Copilot — Session Transcript</h1>
+<p class="meta">${date} · ${selectedRoleLabel} · ${selectedCompanyLabel} style · ${qnas.length} question${qnas.length === 1 ? "" : "s"}</p>
+${qnas.map((e, i) => `<div class="qna">
+<p class="q">${i + 1}. ${e.question}</p>
+<div class="a">${e.answer}</div>
+<p class="time">${e.timestamp.toLocaleTimeString()}</p>
+</div>`).join("\n")}
+<div class="footer">Generated by InfinityHire Copilot · infinityhire.ai</div>
+</body></html>`;
+
+    const w = window.open("", "_blank");
+    if (w) {
+      w.document.write(html);
+      w.document.close();
+      w.focus();
+      setTimeout(() => w.print(), 300);
+    }
+  }, [qnas, role, companyMode]);
 
   if (!sessionStarted) {
     return (
@@ -1048,7 +1074,25 @@ export default function SessionPage() {
                 fireImplicitOnboardingForSessionStart();
                 setSessionStarted(true);
                 try {
-                  await trackEvent("session_started");
+                  const serverSession = await createServerSession({
+                    role,
+                    companyMode,
+                    resumeSnippet: resumeText.trim().slice(0, 500) || undefined,
+                  });
+                  setServerSessionId(serverSession.id);
+                } catch { /* non-fatal: session still works without server persistence */ }
+                try {
+                  const isReturn = Boolean(
+                    (() => { try { const s = localStorage.getItem(SESSIONS_STORAGE_KEY); return s && JSON.parse(s)?.length; } catch { return false; } })()
+                  );
+                  await trackEvent("session_started", {
+                    metadata: { role, companyMode, resumeProvided: Boolean(resumeText.trim()) },
+                  });
+                  if (isReturn) {
+                    trackEvent("return_session_started", {
+                      metadata: { role, companyMode },
+                    }).catch(() => {});
+                  }
                 } catch {}
               }}
               className="w-full py-4 rounded-xl bg-neural-cyan text-black font-bold hover:bg-cyan-300 transition-colors flex items-center justify-center gap-2 text-lg"
@@ -1119,9 +1163,12 @@ export default function SessionPage() {
                 onClick={exportTranscript}
                 className="text-xs text-neural-muted hover:text-white transition-colors inline-flex items-center gap-1"
               >
-                <Download className="w-3 h-3" /> Export
+                <Download className="w-3 h-3" /> Export PDF
               </button>
             )}
+            <Link href="/history" className="text-xs text-neural-muted hover:text-white transition-colors">
+              History
+            </Link>
             <Link href="/team" className="text-xs text-neural-muted hover:text-white transition-colors">
               Team panel
             </Link>
@@ -1590,6 +1637,12 @@ export default function SessionPage() {
             {qnas.length > 0 && (
               <button
                 onClick={() => {
+                  if (serverSessionId) {
+                    endServerSession(serverSessionId, debrief?.overallScore).catch(() => {});
+                  }
+                  trackEvent("session_completed", {
+                    metadata: { qnaCount: qnas.length, hadDebrief: Boolean(debrief) },
+                  }).catch(() => {});
                   setQnas([]);
                   setUiError("");
                   setDebrief(null);
@@ -1600,6 +1653,7 @@ export default function SessionPage() {
                   setQuestionBankError("");
                   setPrepPlan(null);
                   setPrepPlanError("");
+                  setServerSessionId(null);
                 }}
                 className="text-xs text-neural-muted hover:text-red-400 transition-colors"
               >

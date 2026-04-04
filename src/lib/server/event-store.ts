@@ -5,6 +5,8 @@ export type EventType =
   | "signup_completed"
   | "login_completed"
   | "session_started"
+  | "session_completed"
+  | "return_session_started"
   | "first_question_asked"
   | "upgraded_to_pro"
   | "onboarding_started"

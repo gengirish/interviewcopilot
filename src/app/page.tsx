@@ -1,7 +1,10 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Mic, Brain, FileText, Shield, Zap, CheckCircle, ArrowRight, Star } from "lucide-react";
+import {
+  Mic, Brain, Shield, Zap, CheckCircle, ArrowRight,
+  BarChart3, History, Sparkles, Target,
+} from "lucide-react";
 import { getCurrentUser } from "@/lib/api";
 
 function Navbar({ isLoggedIn }: { isLoggedIn: boolean }) {
@@ -14,9 +17,9 @@ function Navbar({ isLoggedIn }: { isLoggedIn: boolean }) {
           <span className="text-xs px-2 py-0.5 rounded-full border border-neural-cyan/30 text-neural-cyan font-mono">AI</span>
         </div>
         <div className="hidden md:flex items-center gap-6 text-sm text-neural-muted">
+          <a href="#how-it-works" className="hover:text-white transition-colors">How it works</a>
           <a href="#features" className="hover:text-white transition-colors">Features</a>
           <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
-          <a href="#roles" className="hover:text-white transition-colors">Use Cases</a>
         </div>
         <div className="flex items-center gap-3">
           {!isLoggedIn && (
@@ -49,42 +52,40 @@ function Hero({ isLoggedIn }: { isLoggedIn: boolean }) {
       <div className="relative max-w-5xl mx-auto text-center">
         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-neural-cyan/30 bg-neural-cyan/5 text-neural-cyan text-sm font-mono mb-8">
           <Mic className="w-4 h-4 animate-pulse" />
-          AI copilot for faster, smarter, and fairer interview decisions
+          Your AI-powered interview prep partner
         </div>
         <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white leading-tight mb-6">
-          Hire with confidence,{" "}
-          <span className="gradient-text">not guesswork.</span>
+          Ace every tech interview{" "}
+          <span className="gradient-text">with AI.</span>
         </h1>
         <p className="text-xl text-neural-muted max-w-3xl mx-auto mb-10 leading-relaxed">
-          Run structured interviews, generate real-time candidate insights, and turn every interview into hiring intelligence.
-          Built for <strong className="text-white">high-growth hiring teams and tech interview loops.</strong>
+          Practice with role-specific questions, get instant AI-powered answers,
+          and track your improvement over time. Built for{" "}
+          <strong className="text-white">engineers, data scientists, and PMs</strong> preparing for top tech companies.
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-3">
           <Link href="/session"
             className="flex items-center gap-2 px-8 py-4 rounded-xl font-bold text-black bg-neural-cyan hover:bg-cyan-300 transition-all glow-cyan text-lg">
-            {isLoggedIn ? "Continue Interview Session" : "Start Free"} <ArrowRight className="w-5 h-5" />
+            {isLoggedIn ? "Continue Practicing" : "Start Free — 30 Answers"} <ArrowRight className="w-5 h-5" />
           </Link>
-          <a
-            href="mailto:hello@infinityhire.ai?subject=InfinityHire%20Copilot%20Demo"
+          <Link href="/session?demo=1"
             className="flex items-center gap-2 px-8 py-4 rounded-xl font-bold border-2 border-neural-cyan/50 text-neural-cyan hover:bg-neural-cyan/10 hover:border-neural-cyan transition-all text-lg"
           >
-            Book Demo
-          </a>
+            Try a Demo Question
+          </Link>
         </div>
         <div className="flex items-center justify-center gap-2 text-neural-muted text-sm mb-12">
           <CheckCircle className="w-4 h-4 text-neural-green" />
-          No install required — works in your browser
+          No install required — works in your browser alongside any video call
         </div>
-        {/* Social proof */}
-        <div className="flex items-center justify-center gap-6 text-sm text-neural-muted">
-          <div className="flex items-center gap-1">
-            {[...Array(5)].map((_, i) => <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />)}
-            <span className="ml-1">4.9/5</span>
-          </div>
+        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-neural-muted">
+          <span className="flex items-center gap-1.5"><Target className="w-4 h-4 text-neural-cyan" /> 6 role modes</span>
           <span>·</span>
-          <span>Designed for structured interview quality</span>
+          <span className="flex items-center gap-1.5"><Sparkles className="w-4 h-4 text-neural-cyan" /> 5 company styles</span>
           <span>·</span>
-          <span>🇮🇳 India-first pricing</span>
+          <span className="flex items-center gap-1.5"><BarChart3 className="w-4 h-4 text-neural-cyan" /> Progress tracking</span>
+          <span>·</span>
+          <span>India-first pricing</span>
         </div>
       </div>
     </section>
@@ -93,16 +94,16 @@ function Hero({ isLoggedIn }: { isLoggedIn: boolean }) {
 
 function HowItWorks() {
   const steps = [
-    { n:"01", icon: FileText, title:"Upload resume", desc:"Paste your resume or upload PDF. AI uses it for personalised, context-aware answers." },
-    { n:"02", icon: Mic, title:"Start your interview", desc:"Join your Zoom/Meet/Teams call. Open InfinityHire Copilot in a separate browser tab." },
-    { n:"03", icon: Brain, title:"Get instant answers", desc:"Speak questions aloud. AI transcribes in real-time and generates tailored answers in seconds." },
+    { n:"01", icon: Target, title:"Choose your role", desc:"Select from ML Engineer, Data Scientist, Backend, Full-Stack, AI Architect, or Product Manager. Each mode tailors AI answers to your domain." },
+    { n:"02", icon: Mic, title:"Practice questions", desc:"Type or speak interview questions. AI generates role-specific, STAR-formatted answers in under 3 seconds. Upload your resume for personalised responses." },
+    { n:"03", icon: BarChart3, title:"Track & improve", desc:"Get AI-powered debrief scores, review past sessions, and follow a personalised 7-day prep plan. Every session makes you sharper." },
   ];
   return (
-    <section className="py-20 px-4 bg-neural-surface/30">
+    <section id="how-it-works" className="py-20 px-4 bg-neural-surface/30">
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-14">
           <h2 className="text-4xl font-bold text-white mb-4">How it works</h2>
-          <p className="text-neural-muted text-lg">Three steps. Zero setup. Works on any platform.</p>
+          <p className="text-neural-muted text-lg">Three steps from signup to interview-ready. Zero setup required.</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {steps.map((s) => {
@@ -125,12 +126,12 @@ function HowItWorks() {
 }
 
 const FEATURES = [
-  { icon: Mic, title:"Live transcription", desc:"Browser-native speech recognition. No third-party app needed. Works with any microphone." },
-  { icon: Brain, title:"Resume-aware answers", desc:"Every answer references your actual experience, projects, and skills. Not generic — yours." },
-  { icon: Zap, title:"<3s response time", desc:"AI answers appear in under 3 seconds. Fast enough for natural conversation flow." },
-  { icon: Shield, title:"Role-specific modes", desc:"ML Engineer, Data Scientist, AI Architect, Backend, Product Manager — optimised prompts per role." },
-  { icon: FileText, title:"Answer history", desc:"Full session log. Review every Q&A after the interview. Export as PDF." },
-  { icon: CheckCircle, title:"STAR method format", desc:"Behavioural questions auto-formatted as Situation → Task → Action → Result." },
+  { icon: Mic, title:"Live voice + text", desc:"Browser-native speech recognition transcribes interview questions in real time. Type or speak — your choice." },
+  { icon: Brain, title:"Resume-aware answers", desc:"Upload your resume and every answer references your actual experience, projects, and tech stack. Not generic — yours." },
+  { icon: Zap, title:"Under 3-second responses", desc:"AI answers appear fast enough for live conversation flow. Practice at interview speed." },
+  { icon: Shield, title:"Company interview styles", desc:"Google, Amazon, Razorpay, Atlassian, Flipkart modes. Each tailors emphasis to how that company actually interviews." },
+  { icon: History, title:"Session history", desc:"Every practice session is saved. Review past Q&As, track debrief scores over time, and measure your improvement." },
+  { icon: Sparkles, title:"AI debrief + coaching", desc:"After each session, get a structured debrief with scores, strengths, improvement areas, and a 7-day prep plan." },
 ];
 
 function Features() {
@@ -138,8 +139,8 @@ function Features() {
     <section id="features" className="py-20 px-4">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-14">
-          <h2 className="text-4xl font-bold text-white mb-4">Built for tech interviews</h2>
-          <p className="text-neural-muted text-lg">Not a generic AI chatbot. A purpose-built interview assistant.</p>
+          <h2 className="text-4xl font-bold text-white mb-4">Built for tech interview prep</h2>
+          <p className="text-neural-muted text-lg">Not a generic chatbot. A purpose-built practice partner for engineering roles.</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {FEATURES.map((f) => {
@@ -162,21 +163,21 @@ function Features() {
 
 function Roles() {
   const roles = [
-    { emoji:"🤖", role:"ML / AI Engineer", companies:"Google DeepMind, OpenAI, Anthropic, HuggingFace" },
-    { emoji:"📊", role:"Data Scientist", companies:"Flipkart, Swiggy, Zomato, PhonePe, CRED" },
-    { emoji:"🏗️", role:"AI Solutions Architect", companies:"AWS, Azure, GCP, TCS, Infosys" },
-    { emoji:"💻", role:"Backend Engineer", companies:"Zepto, Meesho, Razorpay, Groww" },
-    { emoji:"📱", role:"Full-Stack Engineer", companies:"Atlassian, Freshworks, Zoho" },
-    { emoji:"🎯", role:"Product Manager", companies:"Amazon, Microsoft, Uber, Ola" },
+    { emoji:"🤖", role:"ML / AI Engineer", focus:"PyTorch, transformers, RAG, MLOps, model deployment" },
+    { emoji:"📊", role:"Data Scientist", focus:"A/B testing, statistical modelling, pandas, SQL, business analytics" },
+    { emoji:"🏗️", role:"AI Solutions Architect", focus:"LLM orchestration, vector databases, cloud AI, system design" },
+    { emoji:"💻", role:"Backend Engineer", focus:"Microservices, databases, APIs, system design, scalability" },
+    { emoji:"📱", role:"Full-Stack Engineer", focus:"React/Next.js, TypeScript, APIs, performance optimization" },
+    { emoji:"🎯", role:"Product Manager", focus:"Roadmap prioritization, metrics, stakeholder alignment, discovery" },
   ];
   return (
     <section id="roles" className="py-20 px-4 bg-neural-surface/30">
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-14">
           <h2 className="text-4xl font-bold text-white mb-4">
-            Optimised for <span className="gradient-text">modern hiring workflows</span>
+            Tailored for <span className="gradient-text">your role</span>
           </h2>
-          <p className="text-neural-muted text-lg">Role-specific support for teams hiring across technical and product roles.</p>
+          <p className="text-neural-muted text-lg">Every answer uses domain-specific frameworks, examples, and terminology.</p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {roles.map((r) => (
@@ -185,7 +186,7 @@ function Roles() {
                 <span className="text-2xl">{r.emoji}</span>
                 <h3 className="text-white font-semibold text-sm">{r.role}</h3>
               </div>
-              <p className="text-neural-muted text-xs">{r.companies}</p>
+              <p className="text-neural-muted text-xs">{r.focus}</p>
             </div>
           ))}
         </div>
@@ -198,18 +199,18 @@ function Pricing() {
   const tiers = [
     {
       name:"Free", price:"₹0", period:"forever", highlight:false,
-      features:["30 answers/month","Role-specific answer modes","Resume-aware context","Text and voice question input"],
+      features:["30 answers/month","6 role-specific modes","Resume-aware context","Voice + text input","Session history"],
       cta:"Start Free", href:"/session",
     },
     {
       name:"Pro", price:"₹499", period:"/month", highlight:true,
-      features:["Unlimited answers","All 6 role modes","Resume-aware answers","STAR format","Session history & export","Priority AI routing","Faster support"],
+      features:["Unlimited answers","All role + company modes","AI debrief & coaching","7-day prep plans","PDF transcript export","Priority AI routing"],
       cta:"Upgrade to Pro", href:"/dashboard",
     },
     {
       name:"Team", price:"₹999", period:"/month", highlight:false,
-      features:["Everything in Pro","Multi-user collaboration","Shared interview analytics","Priority support","Advanced exports"],
-      cta:"Contact Sales", href:"/dashboard",
+      features:["Everything in Pro","Team panel & rubrics","Shared session analytics","Priority support","Custom company modes"],
+      cta:"Contact Sales", href:"mailto:hello@infinityhire.ai?subject=InfinityHire%20Team%20Plan",
     },
   ];
   return (
@@ -217,9 +218,9 @@ function Pricing() {
       <div className="max-w-5xl mx-auto">
         <div className="text-center mb-14">
           <h2 className="text-4xl font-bold text-white mb-4">
-            Pricing built for fast-moving teams
+            Simple, transparent pricing
           </h2>
-          <p className="text-neural-muted text-lg">Start free, prove value in live interviews, then scale with your team.</p>
+          <p className="text-neural-muted text-lg">Start free. Upgrade when you need unlimited practice before your next interview.</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
           {tiers.map((t) => (
@@ -238,9 +239,15 @@ function Pricing() {
                   </li>
                 ))}
               </ul>
-              <Link href={t.href} className={`w-full py-3 rounded-xl font-bold text-center transition-all ${t.highlight ? "bg-neural-cyan text-black hover:bg-cyan-300" : "border border-neural-border text-white hover:border-neural-cyan/50"}`}>
-                {t.cta}
-              </Link>
+              {t.href.startsWith("mailto:") ? (
+                <a href={t.href} className="w-full py-3 rounded-xl font-bold text-center transition-all border border-neural-border text-white hover:border-neural-cyan/50 block">
+                  {t.cta}
+                </a>
+              ) : (
+                <Link href={t.href} className={`w-full py-3 rounded-xl font-bold text-center transition-all ${t.highlight ? "bg-neural-cyan text-black hover:bg-cyan-300" : "border border-neural-border text-white hover:border-neural-cyan/50"}`}>
+                  {t.cta}
+                </Link>
+              )}
             </div>
           ))}
         </div>
@@ -258,10 +265,11 @@ function Footer() {
           <span className="font-bold text-white">InfinityHire Copilot</span>
         </div>
         <p className="text-sm text-neural-muted text-center">
-          InfinityHire Copilot · AI copilot for interview intelligence
+          AI-powered interview preparation for engineers and product managers
         </p>
         <div className="flex gap-4 text-sm text-neural-muted">
           <Link href="/session" className="hover:text-white">Free Session</Link>
+          <Link href="/acceptable-use" className="hover:text-white">Acceptable Use</Link>
           <a href="mailto:hello@infinityhire.ai" className="hover:text-white">Support</a>
         </div>
       </div>

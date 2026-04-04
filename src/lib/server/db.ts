@@ -100,6 +100,43 @@ export async function ensureSchema(): Promise<void> {
         CREATE INDEX IF NOT EXISTS idx_answer_feedback_user_month
         ON interview_answer_feedback (user_id, month_key);
       `);
+
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS interview_sessions (
+          id TEXT PRIMARY KEY,
+          user_id UUID NOT NULL REFERENCES interview_users(id) ON DELETE CASCADE,
+          role TEXT NOT NULL,
+          company_mode TEXT NOT NULL DEFAULT 'generic',
+          resume_snippet TEXT,
+          started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          ended_at TIMESTAMPTZ,
+          question_count INTEGER NOT NULL DEFAULT 0,
+          debrief_score INTEGER
+        );
+      `);
+
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_interview_sessions_user
+        ON interview_sessions (user_id, started_at DESC);
+      `);
+
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS interview_qnas (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL REFERENCES interview_sessions(id) ON DELETE CASCADE,
+          question TEXT NOT NULL,
+          answer TEXT NOT NULL,
+          source TEXT NOT NULL DEFAULT 'ai',
+          feedback TEXT,
+          asked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          seq INTEGER NOT NULL DEFAULT 0
+        );
+      `);
+
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_interview_qnas_session
+        ON interview_qnas (session_id, seq);
+      `);
     } finally {
       client.release();
     }
