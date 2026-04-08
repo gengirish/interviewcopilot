@@ -5,6 +5,7 @@ import {
   consumeRateLimitToken,
   rateLimitKeyForRequest,
 } from "@/lib/server/rate-limit";
+import { generateText } from "@/lib/server/ai";
 
 const VALID_ROLES = new Set<string>([
   "ml-engineer",
@@ -58,20 +59,6 @@ function jsonTooManyRequests(retryAfterSeconds: number): NextResponse {
   );
   res.headers.set("Retry-After", String(retryAfterSeconds));
   return res;
-}
-
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new Error("Timeout")), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
 }
 
 function normalizeStringArray(raw: unknown, maxItems: number, maxLen: number): string[] {
@@ -236,68 +223,16 @@ ${aRaw.slice(0, MAX_ANSWER_LEN)}`;
 
   const fullPrompt = `${systemPreamble}\n\n${userContent}`;
 
-  const openrouterKey = process.env.OPENROUTER_API_KEY;
-  const geminiKey = process.env.GOOGLE_AI_KEY;
-
   let merged = normalizeRewriteResult(null, fallback);
-  let llmAccepted = false;
 
-  const acceptLlm = (parsed: { rewrittenAnswer?: string; improvements?: unknown } | null) => {
-    if (!parsed) return false;
-    const next = normalizeRewriteResult(parsed, fallback);
-    if (next.rewrittenAnswer.length < 60 || next.improvements.length < 3) return false;
-    merged = next;
-    return true;
-  };
-
-  if (openrouterKey) {
-    try {
-      const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${openrouterKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://interview.intelliforge.digital",
-          "X-Title": "InfinityHire Copilot",
-        },
-        body: JSON.stringify({
-          model: "anthropic/claude-3-haiku",
-          messages: [{ role: "user", content: fullPrompt }],
-          max_tokens: 900,
-          temperature: 0.35,
-        }),
-      });
-      if (res.ok) {
-        const data = await withTimeout(res.json(), 14_000);
-        const text = data.choices?.[0]?.message?.content as string | undefined;
-        if (text && acceptLlm(parseRewriteJson(text))) {
-          llmAccepted = true;
-        }
+  const result = await generateText(fullPrompt, { maxTokens: 900, temperature: 0.35 });
+  if (result) {
+    const parsed = parseRewriteJson(result.text);
+    if (parsed) {
+      const next = normalizeRewriteResult(parsed, fallback);
+      if (next.rewrittenAnswer.length >= 60 && next.improvements.length >= 3) {
+        merged = next;
       }
-    } catch {
-      merged = normalizeRewriteResult(null, fallback);
-    }
-  }
-
-  if (!llmAccepted && geminiKey) {
-    try {
-      const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ contents: [{ parts: [{ text: fullPrompt }] }] }),
-        },
-      );
-      if (res.ok) {
-        const data = await withTimeout(res.json(), 14_000);
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text as string | undefined;
-        if (text) {
-          acceptLlm(parseRewriteJson(text));
-        }
-      }
-    } catch {
-      merged = normalizeRewriteResult(null, fallback);
     }
   }
 

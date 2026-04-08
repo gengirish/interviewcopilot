@@ -8,6 +8,7 @@ import {
   consumeRateLimitToken,
   rateLimitKeyForRequest,
 } from "@/lib/server/rate-limit";
+import { generateText } from "@/lib/server/ai";
 
 const ROLE_PERSONAS: Record<string, string> = {
   "ml-engineer":
@@ -232,19 +233,6 @@ The goal is to demonstrate that I think beyond just "does it work?" to "how does
   }
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new Error("Timeout")), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
 
 export async function POST(req: NextRequest) {
   const user = await getUserFromRequest(req);
@@ -311,8 +299,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const geminiKey = process.env.GOOGLE_AI_KEY;
-  const openrouterKey = process.env.OPENROUTER_API_KEY;
   const persona = ROLE_PERSONAS[normalizedRole] || ROLE_PERSONAS["backend"];
   const roleFramework = ROLE_FRAMEWORKS[normalizedRole] || "";
 
@@ -350,89 +336,20 @@ Rules:
 
 Interview question: "${normalizedQuestion}"`;
 
-  // 1. Try OpenRouter first (primary — Claude 3.5 Haiku for speed + quality)
-  if (openrouterKey) {
-    try {
-      const res = await withTimeout(
-        fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${openrouterKey}`,
-            "Content-Type": "application/json",
-            "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "https://infinityhire.ai",
-            "X-Title": "InfinityHire Copilot",
-          },
-          body: JSON.stringify({
-            model: "anthropic/claude-3.5-haiku",
-            messages: [{ role: "user", content: fullPrompt }],
-            max_tokens: 500,
-            temperature: 0.7,
-          }),
-        }),
-        FETCH_TIMEOUT_MS,
-      );
-      if (res.ok) {
-        const data = await withTimeout(res.json(), 10_000);
-        const answer = data.choices?.[0]?.message?.content;
-        if (answer) {
-          await incrementUsage(user.id);
-          if (usageBefore === 0) {
-            await trackEvent(user.id, "first_question_asked", { source: "api" });
-          }
-          return NextResponse.json({ answer, source: "ai" });
-        }
-        console.error("[answer] OpenRouter returned ok but no content:", JSON.stringify(data).slice(0, 500));
-      } else {
-        const errBody = await res.text().catch(() => "");
-        console.error(`[answer] OpenRouter HTTP ${res.status}: ${errBody.slice(0, 500)}`);
-      }
-    } catch (err) {
-      console.error("[answer] OpenRouter error:", err instanceof Error ? err.message : err);
-    }
-  } else {
-    console.warn("[answer] OPENROUTER_API_KEY not set, skipping primary provider");
-  }
+  const result = await generateText(fullPrompt, {
+    maxTokens: 500,
+    temperature: 0.7,
+    timeoutMs: FETCH_TIMEOUT_MS,
+  });
 
-  // 2. Fallback: Gemini 2.0 Flash
-  if (geminiKey) {
-    try {
-      const res = await withTimeout(
-        fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ contents: [{ parts: [{ text: fullPrompt }] }] }),
-          },
-        ),
-        FETCH_TIMEOUT_MS,
-      );
-      if (res.ok) {
-        const data = await withTimeout(res.json(), 10_000);
-        const answer = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (answer) {
-          await incrementUsage(user.id);
-          if (usageBefore === 0) {
-            await trackEvent(user.id, "first_question_asked", { source: "api" });
-          }
-          return NextResponse.json({ answer, source: "ai" });
-        }
-        console.error("[answer] Gemini returned ok but no content:", JSON.stringify(data).slice(0, 500));
-      } else {
-        const errBody = await res.text().catch(() => "");
-        console.error(`[answer] Gemini HTTP ${res.status}: ${errBody.slice(0, 500)}`);
-      }
-    } catch (err) {
-      console.error("[answer] Gemini error:", err instanceof Error ? err.message : err);
-    }
+  let answer: string;
+  if (result) {
+    answer = result.text;
   } else {
-    console.warn("[answer] GOOGLE_AI_KEY not set, skipping Gemini provider");
+    console.warn("[answer] all providers failed, using static fallback for:", normalizedQuestion.slice(0, 80));
+    const roleLabel = (normalizedRole || "engineer").replace(/-/g, " ");
+    answer = buildQuestionAwareFallback(normalizedQuestion, roleLabel, qType);
   }
-
-  // 3. Question-aware static fallback with varied structure per question type
-  console.warn("[answer] Both LLM providers failed, using static fallback for:", normalizedQuestion.slice(0, 80));
-  const roleLabel = (normalizedRole || "engineer").replace(/-/g, " ");
-  const answer = buildQuestionAwareFallback(normalizedQuestion, roleLabel, qType);
 
   await incrementUsage(user.id);
   if (usageBefore === 0) {

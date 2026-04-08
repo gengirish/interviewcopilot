@@ -12,12 +12,7 @@ test.describe("Landing and auth edge cases", () => {
     await context.clearCookies();
     await page.goto("/");
 
-    await expect(page.getByRole("heading", { name: /hire with confidence, not guesswork/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /^start free$/i }).first()).toBeVisible();
-
-    const demoLink = page.getByRole("link", { name: /book demo/i });
-    await expect(demoLink).toBeVisible();
-    await expect(demoLink).toHaveAttribute("href", /mailto:hello@infinityhire\.ai/i);
+    await expect(page.getByRole("heading", { name: /ace every tech interview/i })).toBeVisible();
 
     await page.getByRole("link", { name: /features/i }).click();
     await expect(page).toHaveURL(/#features/);

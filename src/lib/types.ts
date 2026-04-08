@@ -63,7 +63,7 @@ export interface SessionDebrief {
   nextPracticeQuestions: string[];
   conciseCoachNote: string;
   /** Present when LLM was skipped or failed validation. */
-  source?: "openrouter" | "gemini" | "fallback";
+  source?: "gemini" | "openrouter" | "fallback";
 }
 
 export interface SessionRewriteRequest {
